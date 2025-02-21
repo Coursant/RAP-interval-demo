@@ -1,0 +1,967 @@
+Crate {
+    owners: [
+        Owner(
+            OwnerInfo {
+                nodes: OwnerNodes {
+                    node: ParentedNode {
+                        parent: 4294967040,
+                        node: Crate(
+                            Mod {
+                                spans: ModSpans {
+                                    inner_span: test1.rs:1:1: 15:2 (#0),
+                                    inject_use_span: no-location (#0),
+                                },
+                                item_ids: [
+                                    ItemId {
+                                        owner_id: DefId(0:1 ~ test1[54fe]::{use#0}),
+                                    },
+                                    ItemId {
+                                        owner_id: DefId(0:2 ~ test1[54fe]::std),
+                                    },
+                                    ItemId {
+                                        owner_id: DefId(0:3 ~ test1[54fe]::main),
+                                    },
+                                ],
+                            },
+                        ),
+                    },
+                    parents: [
+                        (0, 4294967040),
+                    ],
+                    bodies: {},
+                    opt_hash_including_bodies: None,
+                },
+                parenting: UnordMap {
+                    inner: {},
+                },
+                attrs: AttributeMap {
+                    map: {},
+                    opt_hash: None,
+                },
+                trait_map: UnordMap {
+                    inner: {},
+                },
+            },
+        ),
+        Owner(
+            OwnerInfo {
+                nodes: OwnerNodes {
+                    node: ParentedNode {
+                        parent: 4294967040,
+                        node: Item(
+                            Item {
+                                ident: #0,
+                                owner_id: DefId(0:1 ~ test1[54fe]::{use#0}),
+                                kind: Use(
+                                    Path {
+                                        span: no-location (#1),
+                                        res: [
+                                            Err,
+                                        ],
+                                        segments: [
+                                            PathSegment {
+                                                ident: {{root}}#1,
+                                                hir_id: HirId(DefId(0:1 ~ test1[54fe]::{use#0}).1),
+                                                res: Err,
+                                                args: None,
+                                                infer_args: false,
+                                            },
+                                            PathSegment {
+                                                ident: std#1,
+                                                hir_id: HirId(DefId(0:1 ~ test1[54fe]::{use#0}).2),
+                                                res: Def(
+                                                    Mod,
+                                                    DefId(1:0 ~ std[b9c4]),
+                                                ),
+                                                args: None,
+                                                infer_args: false,
+                                            },
+                                            PathSegment {
+                                                ident: prelude#1,
+                                                hir_id: HirId(DefId(0:1 ~ test1[54fe]::{use#0}).3),
+                                                res: Def(
+                                                    Mod,
+                                                    DefId(1:46 ~ std[b9c4]::prelude),
+                                                ),
+                                                args: None,
+                                                infer_args: false,
+                                            },
+                                            PathSegment {
+                                                ident: rust_2015#1,
+                                                hir_id: HirId(DefId(0:1 ~ test1[54fe]::{use#0}).4),
+                                                res: Def(
+                                                    Mod,
+                                                    DefId(1:137 ~ std[b9c4]::prelude::rust_2015),
+                                                ),
+                                                args: None,
+                                                infer_args: false,
+                                            },
+                                        ],
+                                    },
+                                    Glob,
+                                ),
+                                span: no-location (#1),
+                                vis_span: no-location (#1),
+                            },
+                        ),
+                    },
+                    parents: [
+                        (0, 4294967040),
+                        (1, 0),
+                        (2, 0),
+                        (3, 0),
+                        (4, 0),
+                    ],
+                    bodies: {},
+                    opt_hash_including_bodies: None,
+                },
+                parenting: UnordMap {
+                    inner: {},
+                },
+                attrs: AttributeMap {
+                    map: {
+                        0: [
+                            Attribute {
+                                kind: Normal(
+                                    NormalAttr {
+                                        item: AttrItem {
+                                            unsafety: Default,
+                                            path: Path {
+                                                span: no-location (#1),
+                                                segments: [
+                                                    PathSegment {
+                                                        ident: prelude_import#1,
+                                                        id: NodeId(2),
+                                                        args: None,
+                                                    },
+                                                ],
+                                                tokens: None,
+                                            },
+                                            args: Empty,
+                                            tokens: None,
+                                        },
+                                        tokens: None,
+                                    },
+                                ),
+                                id: AttrId(1),
+                                style: Outer,
+                                span: no-location (#1),
+                            },
+                        ],
+                    },
+                    opt_hash: None,
+                },
+                trait_map: UnordMap {
+                    inner: {},
+                },
+            },
+        ),
+        Owner(
+            OwnerInfo {
+                nodes: OwnerNodes {
+                    node: ParentedNode {
+                        parent: 4294967040,
+                        node: Item(
+                            Item {
+                                ident: std#2,
+                                owner_id: DefId(0:2 ~ test1[54fe]::std),
+                                kind: ExternCrate(
+                                    None,
+                                ),
+                                span: no-location (#1),
+                                vis_span: no-location (#1),
+                            },
+                        ),
+                    },
+                    parents: [
+                        (0, 4294967040),
+                    ],
+                    bodies: {},
+                    opt_hash_including_bodies: None,
+                },
+                parenting: UnordMap {
+                    inner: {},
+                },
+                attrs: AttributeMap {
+                    map: {
+                        0: [
+                            Attribute {
+                                kind: Normal(
+                                    NormalAttr {
+                                        item: AttrItem {
+                                            unsafety: Default,
+                                            path: Path {
+                                                span: no-location (#1),
+                                                segments: [
+                                                    PathSegment {
+                                                        ident: macro_use#1,
+                                                        id: NodeId(8),
+                                                        args: None,
+                                                    },
+                                                ],
+                                                tokens: None,
+                                            },
+                                            args: Empty,
+                                            tokens: None,
+                                        },
+                                        tokens: None,
+                                    },
+                                ),
+                                id: AttrId(0),
+                                style: Outer,
+                                span: no-location (#1),
+                            },
+                        ],
+                    },
+                    opt_hash: None,
+                },
+                trait_map: UnordMap {
+                    inner: {},
+                },
+            },
+        ),
+        Owner(
+            OwnerInfo {
+                nodes: OwnerNodes {
+                    node: ParentedNode {
+                        parent: 4294967040,
+                        node: Item(
+                            Item {
+                                ident: main#0,
+                                owner_id: DefId(0:3 ~ test1[54fe]::main),
+                                kind: Fn(
+                                    FnSig {
+                                        header: FnHeader {
+                                            safety: Safe,
+                                            constness: NotConst,
+                                            asyncness: NotAsync,
+                                            abi: Rust,
+                                        },
+                                        decl: FnDecl {
+                                            inputs: [],
+                                            output: DefaultReturn(
+                                                test1.rs:1:10: 1:10 (#0),
+                                            ),
+                                            c_variadic: false,
+                                            implicit_self: None,
+                                            lifetime_elision_allowed: false,
+                                        },
+                                        span: test1.rs:1:1: 1:10 (#0),
+                                    },
+                                    Generics {
+                                        params: [],
+                                        predicates: [],
+                                        has_where_clause_predicates: false,
+                                        where_clause_span: test1.rs:1:10: 1:10 (#0),
+                                        span: test1.rs:1:8: 1:8 (#0),
+                                    },
+                                    BodyId {
+                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).60),
+                                    },
+                                ),
+                                span: test1.rs:1:1: 15:2 (#0),
+                                vis_span: no-location (#0),
+                            },
+                        ),
+                    },
+                    parents: [
+                        (0, 4294967040),
+                        (1, 59),
+                        (2, 3),
+                        (3, 1),
+                        (4, 3),
+                        (5, 59),
+                        (6, 10),
+                        (7, 6),
+                        (8, 7),
+                        (9, 6),
+                        (10, 57),
+                        (11, 51),
+                        (12, 13),
+                        (13, 11),
+                        (14, 13),
+                        (15, 51),
+                        (16, 18),
+                        (17, 16),
+                        (18, 15),
+                        (19, 18),
+                        (20, 45),
+                        (21, 26),
+                        (22, 21),
+                        (23, 22),
+                        (24, 21),
+                        (25, 24),
+                        (26, 43),
+                        (27, 31),
+                        (28, 27),
+                        (29, 28),
+                        (30, 27),
+                        (31, 37),
+                        (32, 36),
+                        (33, 32),
+                        (34, 33),
+                        (35, 32),
+                        (36, 37),
+                        (37, 38),
+                        (38, 43),
+                        (39, 40),
+                        (40, 41),
+                        (41, 42),
+                        (42, 43),
+                        (43, 44),
+                        (44, 20),
+                        (45, 51),
+                        (46, 50),
+                        (47, 46),
+                        (48, 47),
+                        (49, 46),
+                        (50, 51),
+                        (51, 52),
+                        (52, 57),
+                        (53, 54),
+                        (54, 55),
+                        (55, 56),
+                        (56, 57),
+                        (57, 58),
+                        (58, 5),
+                        (59, 60),
+                        (60, 0),
+                    ],
+                    bodies: {
+                        60: Body {
+                            params: [],
+                            value: Expr {
+                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).60),
+                                kind: Block(
+                                    Block {
+                                        stmts: [
+                                            Stmt {
+                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).1),
+                                                kind: Let(
+                                                    LetStmt {
+                                                        pat: Pat {
+                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).4),
+                                                            kind: Binding(
+                                                                BindingMode(
+                                                                    No,
+                                                                    Mut,
+                                                                ),
+                                                                HirId(DefId(0:3 ~ test1[54fe]::main).4),
+                                                                k#0,
+                                                                None,
+                                                            ),
+                                                            span: test1.rs:2:9: 2:14 (#0),
+                                                            default_binding_modes: true,
+                                                        },
+                                                        ty: None,
+                                                        init: Some(
+                                                            Expr {
+                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).2),
+                                                                kind: Lit(
+                                                                    Spanned {
+                                                                        node: Int(
+                                                                            Pu128(
+                                                                                0,
+                                                                            ),
+                                                                            Unsuffixed,
+                                                                        ),
+                                                                        span: test1.rs:2:17: 2:18 (#0),
+                                                                    },
+                                                                ),
+                                                                span: test1.rs:2:17: 2:18 (#0),
+                                                            },
+                                                        ),
+                                                        els: None,
+                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).3),
+                                                        span: test1.rs:2:5: 2:19 (#0),
+                                                        source: Normal,
+                                                    },
+                                                ),
+                                                span: test1.rs:2:5: 2:19 (#0),
+                                            },
+                                        ],
+                                        expr: Some(
+                                            Expr {
+                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).5),
+                                                kind: Loop(
+                                                    Block {
+                                                        stmts: [],
+                                                        expr: Some(
+                                                            Expr {
+                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).57),
+                                                                kind: If(
+                                                                    Expr {
+                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).10),
+                                                                        kind: DropTemps(
+                                                                            Expr {
+                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).6),
+                                                                                kind: Binary(
+                                                                                    Spanned {
+                                                                                        node: Lt,
+                                                                                        span: test1.rs:4:13: 4:14 (#0),
+                                                                                    },
+                                                                                    Expr {
+                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).7),
+                                                                                        kind: Path(
+                                                                                            Resolved(
+                                                                                                None,
+                                                                                                Path {
+                                                                                                    span: test1.rs:4:11: 4:12 (#0),
+                                                                                                    res: Local(
+                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).4),
+                                                                                                    ),
+                                                                                                    segments: [
+                                                                                                        PathSegment {
+                                                                                                            ident: k#0,
+                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).8),
+                                                                                                            res: Local(
+                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).4),
+                                                                                                            ),
+                                                                                                            args: None,
+                                                                                                            infer_args: true,
+                                                                                                        },
+                                                                                                    ],
+                                                                                                },
+                                                                                            ),
+                                                                                        ),
+                                                                                        span: test1.rs:4:11: 4:12 (#0),
+                                                                                    },
+                                                                                    Expr {
+                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).9),
+                                                                                        kind: Lit(
+                                                                                            Spanned {
+                                                                                                node: Int(
+                                                                                                    Pu128(
+                                                                                                        100,
+                                                                                                    ),
+                                                                                                    Unsuffixed,
+                                                                                                ),
+                                                                                                span: test1.rs:4:15: 4:18 (#0),
+                                                                                            },
+                                                                                        ),
+                                                                                        span: test1.rs:4:15: 4:18 (#0),
+                                                                                    },
+                                                                                ),
+                                                                                span: test1.rs:4:11: 4:18 (#0),
+                                                                            },
+                                                                        ),
+                                                                        span: test1.rs:4:11: 4:18 (#5),
+                                                                    },
+                                                                    Expr {
+                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).52),
+                                                                        kind: Block(
+                                                                            Block {
+                                                                                stmts: [
+                                                                                    Stmt {
+                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).11),
+                                                                                        kind: Let(
+                                                                                            LetStmt {
+                                                                                                pat: Pat {
+                                                                                                    hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).14),
+                                                                                                    kind: Binding(
+                                                                                                        BindingMode(
+                                                                                                            No,
+                                                                                                            Mut,
+                                                                                                        ),
+                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).14),
+                                                                                                        i#0,
+                                                                                                        None,
+                                                                                                    ),
+                                                                                                    span: test1.rs:5:13: 5:18 (#0),
+                                                                                                    default_binding_modes: true,
+                                                                                                },
+                                                                                                ty: None,
+                                                                                                init: Some(
+                                                                                                    Expr {
+                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).12),
+                                                                                                        kind: Lit(
+                                                                                                            Spanned {
+                                                                                                                node: Int(
+                                                                                                                    Pu128(
+                                                                                                                        0,
+                                                                                                                    ),
+                                                                                                                    Unsuffixed,
+                                                                                                                ),
+                                                                                                                span: test1.rs:5:21: 5:22 (#0),
+                                                                                                            },
+                                                                                                        ),
+                                                                                                        span: test1.rs:5:21: 5:22 (#0),
+                                                                                                    },
+                                                                                                ),
+                                                                                                els: None,
+                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).13),
+                                                                                                span: test1.rs:5:9: 5:23 (#0),
+                                                                                                source: Normal,
+                                                                                            },
+                                                                                        ),
+                                                                                        span: test1.rs:5:9: 5:23 (#0),
+                                                                                    },
+                                                                                    Stmt {
+                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).15),
+                                                                                        kind: Let(
+                                                                                            LetStmt {
+                                                                                                pat: Pat {
+                                                                                                    hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).19),
+                                                                                                    kind: Binding(
+                                                                                                        BindingMode(
+                                                                                                            No,
+                                                                                                            Mut,
+                                                                                                        ),
+                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).19),
+                                                                                                        j#0,
+                                                                                                        None,
+                                                                                                    ),
+                                                                                                    span: test1.rs:6:13: 6:18 (#0),
+                                                                                                    default_binding_modes: true,
+                                                                                                },
+                                                                                                ty: None,
+                                                                                                init: Some(
+                                                                                                    Expr {
+                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).16),
+                                                                                                        kind: Path(
+                                                                                                            Resolved(
+                                                                                                                None,
+                                                                                                                Path {
+                                                                                                                    span: test1.rs:6:21: 6:22 (#0),
+                                                                                                                    res: Local(
+                                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).4),
+                                                                                                                    ),
+                                                                                                                    segments: [
+                                                                                                                        PathSegment {
+                                                                                                                            ident: k#0,
+                                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).17),
+                                                                                                                            res: Local(
+                                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).4),
+                                                                                                                            ),
+                                                                                                                            args: None,
+                                                                                                                            infer_args: true,
+                                                                                                                        },
+                                                                                                                    ],
+                                                                                                                },
+                                                                                                            ),
+                                                                                                        ),
+                                                                                                        span: test1.rs:6:21: 6:22 (#0),
+                                                                                                    },
+                                                                                                ),
+                                                                                                els: None,
+                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).18),
+                                                                                                span: test1.rs:6:9: 6:23 (#0),
+                                                                                                source: Normal,
+                                                                                            },
+                                                                                        ),
+                                                                                        span: test1.rs:6:9: 6:23 (#0),
+                                                                                    },
+                                                                                    Stmt {
+                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).45),
+                                                                                        kind: Expr(
+                                                                                            Expr {
+                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).20),
+                                                                                                kind: Loop(
+                                                                                                    Block {
+                                                                                                        stmts: [],
+                                                                                                        expr: Some(
+                                                                                                            Expr {
+                                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).43),
+                                                                                                                kind: If(
+                                                                                                                    Expr {
+                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).26),
+                                                                                                                        kind: DropTemps(
+                                                                                                                            Expr {
+                                                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).21),
+                                                                                                                                kind: Binary(
+                                                                                                                                    Spanned {
+                                                                                                                                        node: Lt,
+                                                                                                                                        span: test1.rs:8:17: 8:18 (#0),
+                                                                                                                                    },
+                                                                                                                                    Expr {
+                                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).22),
+                                                                                                                                        kind: Path(
+                                                                                                                                            Resolved(
+                                                                                                                                                None,
+                                                                                                                                                Path {
+                                                                                                                                                    span: test1.rs:8:15: 8:16 (#0),
+                                                                                                                                                    res: Local(
+                                                                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).14),
+                                                                                                                                                    ),
+                                                                                                                                                    segments: [
+                                                                                                                                                        PathSegment {
+                                                                                                                                                            ident: i#0,
+                                                                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).23),
+                                                                                                                                                            res: Local(
+                                                                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).14),
+                                                                                                                                                            ),
+                                                                                                                                                            args: None,
+                                                                                                                                                            infer_args: true,
+                                                                                                                                                        },
+                                                                                                                                                    ],
+                                                                                                                                                },
+                                                                                                                                            ),
+                                                                                                                                        ),
+                                                                                                                                        span: test1.rs:8:15: 8:16 (#0),
+                                                                                                                                    },
+                                                                                                                                    Expr {
+                                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).24),
+                                                                                                                                        kind: Path(
+                                                                                                                                            Resolved(
+                                                                                                                                                None,
+                                                                                                                                                Path {
+                                                                                                                                                    span: test1.rs:8:19: 8:20 (#0),
+                                                                                                                                                    res: Local(
+                                                                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).19),
+                                                                                                                                                    ),
+                                                                                                                                                    segments: [
+                                                                                                                                                        PathSegment {
+                                                                                                                                                            ident: j#0,
+                                                                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).25),
+                                                                                                                                                            res: Local(
+                                                                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).19),
+                                                                                                                                                            ),
+                                                                                                                                                            args: None,
+                                                                                                                                                            infer_args: true,
+                                                                                                                                                        },
+                                                                                                                                                    ],
+                                                                                                                                                },
+                                                                                                                                            ),
+                                                                                                                                        ),
+                                                                                                                                        span: test1.rs:8:19: 8:20 (#0),
+                                                                                                                                    },
+                                                                                                                                ),
+                                                                                                                                span: test1.rs:8:15: 8:20 (#0),
+                                                                                                                            },
+                                                                                                                        ),
+                                                                                                                        span: test1.rs:8:15: 8:20 (#7),
+                                                                                                                    },
+                                                                                                                    Expr {
+                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).38),
+                                                                                                                        kind: Block(
+                                                                                                                            Block {
+                                                                                                                                stmts: [
+                                                                                                                                    Stmt {
+                                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).31),
+                                                                                                                                        kind: Semi(
+                                                                                                                                            Expr {
+                                                                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).27),
+                                                                                                                                                kind: AssignOp(
+                                                                                                                                                    Spanned {
+                                                                                                                                                        node: Add,
+                                                                                                                                                        span: test1.rs:9:15: 9:17 (#0),
+                                                                                                                                                    },
+                                                                                                                                                    Expr {
+                                                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).28),
+                                                                                                                                                        kind: Path(
+                                                                                                                                                            Resolved(
+                                                                                                                                                                None,
+                                                                                                                                                                Path {
+                                                                                                                                                                    span: test1.rs:9:13: 9:14 (#0),
+                                                                                                                                                                    res: Local(
+                                                                                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).14),
+                                                                                                                                                                    ),
+                                                                                                                                                                    segments: [
+                                                                                                                                                                        PathSegment {
+                                                                                                                                                                            ident: i#0,
+                                                                                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).29),
+                                                                                                                                                                            res: Local(
+                                                                                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).14),
+                                                                                                                                                                            ),
+                                                                                                                                                                            args: None,
+                                                                                                                                                                            infer_args: true,
+                                                                                                                                                                        },
+                                                                                                                                                                    ],
+                                                                                                                                                                },
+                                                                                                                                                            ),
+                                                                                                                                                        ),
+                                                                                                                                                        span: test1.rs:9:13: 9:14 (#0),
+                                                                                                                                                    },
+                                                                                                                                                    Expr {
+                                                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).30),
+                                                                                                                                                        kind: Lit(
+                                                                                                                                                            Spanned {
+                                                                                                                                                                node: Int(
+                                                                                                                                                                    Pu128(
+                                                                                                                                                                        1,
+                                                                                                                                                                    ),
+                                                                                                                                                                    Unsuffixed,
+                                                                                                                                                                ),
+                                                                                                                                                                span: test1.rs:9:18: 9:19 (#0),
+                                                                                                                                                            },
+                                                                                                                                                        ),
+                                                                                                                                                        span: test1.rs:9:18: 9:19 (#0),
+                                                                                                                                                    },
+                                                                                                                                                ),
+                                                                                                                                                span: test1.rs:9:13: 9:19 (#0),
+                                                                                                                                            },
+                                                                                                                                        ),
+                                                                                                                                        span: test1.rs:9:13: 9:20 (#0),
+                                                                                                                                    },
+                                                                                                                                    Stmt {
+                                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).36),
+                                                                                                                                        kind: Semi(
+                                                                                                                                            Expr {
+                                                                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).32),
+                                                                                                                                                kind: AssignOp(
+                                                                                                                                                    Spanned {
+                                                                                                                                                        node: Sub,
+                                                                                                                                                        span: test1.rs:10:15: 10:17 (#0),
+                                                                                                                                                    },
+                                                                                                                                                    Expr {
+                                                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).33),
+                                                                                                                                                        kind: Path(
+                                                                                                                                                            Resolved(
+                                                                                                                                                                None,
+                                                                                                                                                                Path {
+                                                                                                                                                                    span: test1.rs:10:13: 10:14 (#0),
+                                                                                                                                                                    res: Local(
+                                                                                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).19),
+                                                                                                                                                                    ),
+                                                                                                                                                                    segments: [
+                                                                                                                                                                        PathSegment {
+                                                                                                                                                                            ident: j#0,
+                                                                                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).34),
+                                                                                                                                                                            res: Local(
+                                                                                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).19),
+                                                                                                                                                                            ),
+                                                                                                                                                                            args: None,
+                                                                                                                                                                            infer_args: true,
+                                                                                                                                                                        },
+                                                                                                                                                                    ],
+                                                                                                                                                                },
+                                                                                                                                                            ),
+                                                                                                                                                        ),
+                                                                                                                                                        span: test1.rs:10:13: 10:14 (#0),
+                                                                                                                                                    },
+                                                                                                                                                    Expr {
+                                                                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).35),
+                                                                                                                                                        kind: Lit(
+                                                                                                                                                            Spanned {
+                                                                                                                                                                node: Int(
+                                                                                                                                                                    Pu128(
+                                                                                                                                                                        1,
+                                                                                                                                                                    ),
+                                                                                                                                                                    Unsuffixed,
+                                                                                                                                                                ),
+                                                                                                                                                                span: test1.rs:10:18: 10:19 (#0),
+                                                                                                                                                            },
+                                                                                                                                                        ),
+                                                                                                                                                        span: test1.rs:10:18: 10:19 (#0),
+                                                                                                                                                    },
+                                                                                                                                                ),
+                                                                                                                                                span: test1.rs:10:13: 10:19 (#0),
+                                                                                                                                            },
+                                                                                                                                        ),
+                                                                                                                                        span: test1.rs:10:13: 10:20 (#0),
+                                                                                                                                    },
+                                                                                                                                ],
+                                                                                                                                expr: None,
+                                                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).37),
+                                                                                                                                rules: DefaultBlock,
+                                                                                                                                span: test1.rs:8:21: 11:10 (#0),
+                                                                                                                                targeted_by_break: false,
+                                                                                                                            },
+                                                                                                                            None,
+                                                                                                                        ),
+                                                                                                                        span: test1.rs:8:21: 11:10 (#0),
+                                                                                                                    },
+                                                                                                                    Some(
+                                                                                                                        Expr {
+                                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).42),
+                                                                                                                            kind: Block(
+                                                                                                                                Block {
+                                                                                                                                    stmts: [
+                                                                                                                                        Stmt {
+                                                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).40),
+                                                                                                                                            kind: Expr(
+                                                                                                                                                Expr {
+                                                                                                                                                    hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).39),
+                                                                                                                                                    kind: Break(
+                                                                                                                                                        Destination {
+                                                                                                                                                            label: None,
+                                                                                                                                                            target_id: Ok(
+                                                                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).20),
+                                                                                                                                                            ),
+                                                                                                                                                        },
+                                                                                                                                                        None,
+                                                                                                                                                    ),
+                                                                                                                                                    span: test1.rs:8:9: 11:10 (#6),
+                                                                                                                                                },
+                                                                                                                                            ),
+                                                                                                                                            span: test1.rs:8:9: 11:10 (#6),
+                                                                                                                                        },
+                                                                                                                                    ],
+                                                                                                                                    expr: None,
+                                                                                                                                    hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).41),
+                                                                                                                                    rules: DefaultBlock,
+                                                                                                                                    span: test1.rs:8:9: 11:10 (#6),
+                                                                                                                                    targeted_by_break: false,
+                                                                                                                                },
+                                                                                                                                None,
+                                                                                                                            ),
+                                                                                                                            span: test1.rs:8:9: 11:10 (#6),
+                                                                                                                        },
+                                                                                                                    ),
+                                                                                                                ),
+                                                                                                                span: test1.rs:8:9: 11:10 (#6),
+                                                                                                            },
+                                                                                                        ),
+                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).44),
+                                                                                                        rules: DefaultBlock,
+                                                                                                        span: test1.rs:8:9: 11:10 (#6),
+                                                                                                        targeted_by_break: false,
+                                                                                                    },
+                                                                                                    None,
+                                                                                                    While,
+                                                                                                    test1.rs:8:9: 8:20 (#6),
+                                                                                                ),
+                                                                                                span: test1.rs:8:9: 11:10 (#0),
+                                                                                            },
+                                                                                        ),
+                                                                                        span: test1.rs:8:9: 11:10 (#0),
+                                                                                    },
+                                                                                    Stmt {
+                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).50),
+                                                                                        kind: Semi(
+                                                                                            Expr {
+                                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).46),
+                                                                                                kind: AssignOp(
+                                                                                                    Spanned {
+                                                                                                        node: Add,
+                                                                                                        span: test1.rs:13:11: 13:13 (#0),
+                                                                                                    },
+                                                                                                    Expr {
+                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).47),
+                                                                                                        kind: Path(
+                                                                                                            Resolved(
+                                                                                                                None,
+                                                                                                                Path {
+                                                                                                                    span: test1.rs:13:9: 13:10 (#0),
+                                                                                                                    res: Local(
+                                                                                                                        HirId(DefId(0:3 ~ test1[54fe]::main).4),
+                                                                                                                    ),
+                                                                                                                    segments: [
+                                                                                                                        PathSegment {
+                                                                                                                            ident: k#0,
+                                                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).48),
+                                                                                                                            res: Local(
+                                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).4),
+                                                                                                                            ),
+                                                                                                                            args: None,
+                                                                                                                            infer_args: true,
+                                                                                                                        },
+                                                                                                                    ],
+                                                                                                                },
+                                                                                                            ),
+                                                                                                        ),
+                                                                                                        span: test1.rs:13:9: 13:10 (#0),
+                                                                                                    },
+                                                                                                    Expr {
+                                                                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).49),
+                                                                                                        kind: Lit(
+                                                                                                            Spanned {
+                                                                                                                node: Int(
+                                                                                                                    Pu128(
+                                                                                                                        1,
+                                                                                                                    ),
+                                                                                                                    Unsuffixed,
+                                                                                                                ),
+                                                                                                                span: test1.rs:13:14: 13:15 (#0),
+                                                                                                            },
+                                                                                                        ),
+                                                                                                        span: test1.rs:13:14: 13:15 (#0),
+                                                                                                    },
+                                                                                                ),
+                                                                                                span: test1.rs:13:9: 13:15 (#0),
+                                                                                            },
+                                                                                        ),
+                                                                                        span: test1.rs:13:9: 13:16 (#0),
+                                                                                    },
+                                                                                ],
+                                                                                expr: None,
+                                                                                hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).51),
+                                                                                rules: DefaultBlock,
+                                                                                span: test1.rs:4:19: 14:6 (#0),
+                                                                                targeted_by_break: false,
+                                                                            },
+                                                                            None,
+                                                                        ),
+                                                                        span: test1.rs:4:19: 14:6 (#0),
+                                                                    },
+                                                                    Some(
+                                                                        Expr {
+                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).56),
+                                                                            kind: Block(
+                                                                                Block {
+                                                                                    stmts: [
+                                                                                        Stmt {
+                                                                                            hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).54),
+                                                                                            kind: Expr(
+                                                                                                Expr {
+                                                                                                    hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).53),
+                                                                                                    kind: Break(
+                                                                                                        Destination {
+                                                                                                            label: None,
+                                                                                                            target_id: Ok(
+                                                                                                                HirId(DefId(0:3 ~ test1[54fe]::main).5),
+                                                                                                            ),
+                                                                                                        },
+                                                                                                        None,
+                                                                                                    ),
+                                                                                                    span: test1.rs:4:5: 14:6 (#4),
+                                                                                                },
+                                                                                            ),
+                                                                                            span: test1.rs:4:5: 14:6 (#4),
+                                                                                        },
+                                                                                    ],
+                                                                                    expr: None,
+                                                                                    hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).55),
+                                                                                    rules: DefaultBlock,
+                                                                                    span: test1.rs:4:5: 14:6 (#4),
+                                                                                    targeted_by_break: false,
+                                                                                },
+                                                                                None,
+                                                                            ),
+                                                                            span: test1.rs:4:5: 14:6 (#4),
+                                                                        },
+                                                                    ),
+                                                                ),
+                                                                span: test1.rs:4:5: 14:6 (#4),
+                                                            },
+                                                        ),
+                                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).58),
+                                                        rules: DefaultBlock,
+                                                        span: test1.rs:4:5: 14:6 (#4),
+                                                        targeted_by_break: false,
+                                                    },
+                                                    None,
+                                                    While,
+                                                    test1.rs:4:5: 4:18 (#4),
+                                                ),
+                                                span: test1.rs:4:5: 14:6 (#0),
+                                            },
+                                        ),
+                                        hir_id: HirId(DefId(0:3 ~ test1[54fe]::main).59),
+                                        rules: DefaultBlock,
+                                        span: test1.rs:1:11: 15:2 (#0),
+                                        targeted_by_break: false,
+                                    },
+                                    None,
+                                ),
+                                span: test1.rs:1:11: 15:2 (#0),
+                            },
+                        },
+                    },
+                    opt_hash_including_bodies: None,
+                },
+                parenting: UnordMap {
+                    inner: {},
+                },
+                attrs: AttributeMap {
+                    map: {},
+                    opt_hash: None,
+                },
+                trait_map: UnordMap {
+                    inner: {},
+                },
+            },
+        ),
+    ],
+    opt_hir_hash: None,
+}
