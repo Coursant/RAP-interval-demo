@@ -35,6 +35,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 extern crate tracing;
+use rustc_mir_transform::*;
 
 use rustc_data_structures::graph::dominators::Dominators;
 // use rustc_mir_transform::ssa::SsaLocals;

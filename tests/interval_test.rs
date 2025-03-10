@@ -27,7 +27,7 @@ where
 
 mod tests {
     use intervals::*;
-    use RAP_interval::domain::{
+    use RAP_interval_demo::domain::{
         range::{Range, RangeType},
         ConstraintGraph,
     };

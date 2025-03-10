@@ -140,7 +140,6 @@ impl<'tcx> SSATransformer<'tcx> {
         write_mir_pretty(self.tcx, None, &mut w).unwrap();
         let mut file2 = File::create(&phi_mir_file_path).unwrap();
         let mut w2 = io::BufWriter::new(&mut file2);
-        write_mir_fn(self.tcx, &self.body, &mut |_, _| Ok(()), &mut w2).unwrap();
     }
     fn depth_first_search_postorder(
         dom_tree: &HashMap<BasicBlock, Vec<BasicBlock>>,
@@ -305,19 +304,18 @@ impl<'tcx> SSATransformer<'tcx> {
                     if !matches!(rvalue, Rvalue::Aggregate(..)) {
                         match rvalue {
                             Rvalue::Use(ref mut operand) => {
-                                self.replace_with_latest_def(operand);
-                            }
+                                                        self.replace_with_latest_def(operand);
+                                                    }
                             Rvalue::BinaryOp(op, box (ref mut operand1, ref mut operand2)) => {
-                                self.replace_with_latest_def(operand1);
-                                self.replace_with_latest_def(operand2);
-                            }
+                                                        self.replace_with_latest_def(operand1);
+                                                        self.replace_with_latest_def(operand2);
+                                                    }
                             Rvalue::UnaryOp(op, ref mut operand) => {
-                                self.replace_with_latest_def(operand);
-                            }
+                                                        self.replace_with_latest_def(operand);
+                                                    }
                             Rvalue::Repeat(operand, _) => todo!(),
                             Rvalue::Ref(region, borrow_kind, place) => todo!(),
                             Rvalue::ThreadLocalRef(def_id) => todo!(),
-                            Rvalue::AddressOf(mutability, place) => todo!(),
                             Rvalue::Len(place) => todo!(),
                             Rvalue::Cast(cast_kind, operand, ty) => todo!(),
                             Rvalue::NullaryOp(null_op, ty) => todo!(),
@@ -325,6 +323,7 @@ impl<'tcx> SSATransformer<'tcx> {
                             Rvalue::Aggregate(aggregate_kind, index_vec) => todo!(),
                             Rvalue::ShallowInitBox(operand, ty) => todo!(),
                             Rvalue::CopyForDeref(place) => todo!(),
+Rvalue::RawPtr(mutability, place) => todo!(),
                         }
                         // 遍历 rvalue 中的操作数，并执行变量重命名
                         // for operand in rvalue.operands_mut() {
