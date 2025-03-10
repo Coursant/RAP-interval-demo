@@ -18,7 +18,7 @@
 // tidy-alphabetical-end
 #[macro_use]
 extern crate rustc_codegen_ssa;
-extern crate RAP_interval;
+extern crate RAP_interval_demo;
 extern crate intervals;
 extern crate rustc_const_eval;
 extern crate rustc_data_structures;
@@ -52,6 +52,7 @@ use rustc_middle::{
     mir::{visit::Visitor, Body, Local, Location},
     ty::TyCtxt,
 };
+use rustc_mir_transform::*;
 use rustc_target::abi::FieldIdx;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
@@ -59,8 +60,8 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
-use RAP_interval::domain::ConstraintGraph::ConstraintGraph;
-use RAP_interval::SSA::SSATransformer::*;
+use RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph;
+use RAP_interval_demo::SSA::SSATransformer::*;
 
 fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
     // // let mut visitor = LocalUseVisitor { tcx, &body };
@@ -92,7 +93,7 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
     println!("{:?}", cg.vars);
 
     let p =
-        RAP_interval::domain::ConstraintGraph::ConstraintGraph::<'tcx, u32>::create_random_place(
+        RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph::<'tcx, u32>::create_random_place(
             tcx,
         );
     println!("{:?}", p);
