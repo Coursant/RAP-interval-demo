@@ -62,48 +62,40 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 use RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph;
-use RAP_interval_demo::SSA::SSATransformer::*;
+use RAP_interval_demo::SSA::{PassRunner::*, SSATransformer::*};
 
 fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
-    // // let mut visitor = LocalUseVisitor { tcx, &body };
-    // // visitor.visit_body(&body);
-    // let param_env = tcx.param_env_reveal_all_normalized(body.source.def_id());
-    // // let ssa = SsaLocals::new(tcx, &body, param_env);
-    // let dominators = body.basic_blocks.dominators();
-    // let cfg = extract_cfg_from_predecessors(&body);
-    // let variables = body.local_decls.indices().collect::<Vec<_>>();
-    // println!("{:?}", cfg);
-    // println!("{:?}", dominators);
-    // println!("!!!!!!!!!!!!!!!!!!!!!!!!");
-    // let dom_tree = construct_dominance_tree(&body);
-    // print_dominance_tree(&dom_tree, START_BLOCK, 0);
-    // let df = compute_dominance_frontier(&body, &dom_tree);
-    // print!("{:?}", df);
-    // println!("!!!!!!!!!!!!!!!!!!!!!!!!");
-    // let local_assign_blocks = map_locals_to_assign_blocks(&body);
 
-    // print!("{:?}", local_assign_blocks);
-    // // let mut visitor = LocalUseVisitor { tcx, body };
-    // insert_phi_statment(&mut body, &df, local_assign_blocks);
-    let body = tcx.optimized_mir(def_id);
+    // let mir_built = tcx.mir_built(def_id);
+    // let body = mir_built.borrow();
+
+    let mut body = tcx.optimized_mir(def_id).clone();
     //不许存储body的可变引用
-    let mut ssa: SSATransformer<'tcx> = SSATransformer::new(tcx, def_id);
-    ssa.insert_phi_statment();
-    ssa.analyze();
-    let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(tcx);
-    println!("{:?}", cg.vars);
+    let body_mut_ref = &mut body;
+    let passrunner = PassRunner::new(tcx);
+    passrunner.run_pass(body_mut_ref);
+    passrunner.print_diff(body_mut_ref);
 
-    let p =
-        RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph::<'tcx, u32>::create_random_place(
-            tcx,
-        );
-    println!("{:?}", p);
 
-    cg.build_graph(&body);
+    let body_clone = tcx.optimized_mir(def_id).clone();
 
-    println!("{:?}", cg.vars);
-    println!("{:?}", cg.values_branchmap);
 
+    // let mut ssa: SSATransformer<'tcx> = SSATransformer::new(tcx, def_id);
+    // // ssa.insert_phi_statment();
+    // ssa.analyze();
+    // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(tcx);
+    // println!("{:?}", cg.vars);
+
+    // let p =
+    //     RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph::<'tcx, u32>::create_random_place(
+    //         tcx,
+    //     );
+    // println!("{:?}", p);
+
+    // // cg.build_graph(&body);
+
+    // println!("{:?}", cg.vars);
+    // println!("{:?}", cg.values_branchmap);
 }
 
 struct MyDataflowCallbacks;
@@ -131,6 +123,8 @@ impl Callbacks for MyDataflowCallbacks {
 
 // 在main函数中使用rustc_driver手动调用编译过程，并运行回调进行数据流分析
 fn main() {
+    std::env::set_var("RUST_BACKTRACE", "full");
+
     let args = vec![
         String::from("rustc"),
         String::from("tests/test1.rs"),

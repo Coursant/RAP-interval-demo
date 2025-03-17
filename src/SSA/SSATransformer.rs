@@ -14,6 +14,7 @@ use rustc_middle::{
     ty::TyCtxt,
 };
 use rustc_target::abi::FieldIdx;
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{self, Write};
@@ -75,7 +76,14 @@ use rustc_data_structures::fx::FxHashMap;
 //     /// 插入 Phi 函数到每个目标块的头部
 
 // }
+use rustc_index::bit_set::BitSet;
+use rustc_index::IndexSlice;
+use rustc_middle::mir::visit::*;
+use rustc_middle::mir::visit::*;
+use rustc_middle::mir::*;
 
+use super::Replacer::*;
+use crate::SSA::ssa::SsaLocals;
 pub struct SSATransformer<'tcx> {
     tcx: TyCtxt<'tcx>, // TyCtxt 上下文
     def_id: LocalDefId,
@@ -91,6 +99,8 @@ pub struct SSATransformer<'tcx> {
 impl<'tcx> SSATransformer<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> Self {
         let mut body_clone = tcx.optimized_mir(def_id).clone();
+        // let mut body = tcx.mir_built(def_id).borrow_mut();
+
         let cfg: HashMap<BasicBlock, Vec<BasicBlock>> =
             Self::extract_cfg_from_predecessors(&body_clone);
 
@@ -104,7 +114,31 @@ impl<'tcx> SSATransformer<'tcx> {
 
         let local_assign_blocks: HashMap<Local, HashSet<BasicBlock>> =
             Self::map_locals_to_assign_blocks(&body_clone);
+        let body = &mut body_clone;
 
+        let param_env = tcx.param_env_reveal_all_normalized(body.source.def_id());
+        let ssa = SsaLocals::new(tcx, body, param_env);
+
+        let fully_moved = fully_moved_locals(&ssa, body);
+        debug!(?fully_moved);
+
+        let mut storage_to_remove = BitSet::new_empty(fully_moved.domain_size());
+        for (local, &head) in ssa.copy_classes().iter_enumerated() {
+            if local != head {
+                storage_to_remove.insert(head);
+            }
+        }
+
+        let any_replacement = ssa.copy_classes().iter_enumerated().any(|(l, &h)| l != h);
+
+        Replacer {
+            tcx,
+            copy_classes: ssa.copy_classes(),
+            fully_moved,
+            borrowed_locals: ssa.borrowed_locals(),
+            storage_to_remove,
+        }
+        .visit_body_preserves_cfg(body);
         SSATransformer {
             tcx,
             def_id,
@@ -134,12 +168,21 @@ impl<'tcx> SSATransformer<'tcx> {
 
         // 动态生成文件路径
         let mir_file_path = format!("{}/mir_{:?}.txt", dir_path, self.def_id);
-        let phi_mir_file_path = format!("{}/phi_mir_{:?}.txt", dir_path, self.def_id);
+        let phi_mir_file_path = format!("{}/ssa_mir_{:?}.txt", dir_path, self.def_id);
         let mut file = File::create(&mir_file_path).unwrap();
-        let mut w = io::BufWriter::new(&mut file);
-        write_mir_pretty(self.tcx, None, &mut w).unwrap();
+        let mut w1 = io::BufWriter::new(&mut file);
+        write_mir_pretty(self.tcx, None, &mut w1).unwrap();
         let mut file2 = File::create(&phi_mir_file_path).unwrap();
         let mut w2 = io::BufWriter::new(&mut file2);
+        let options = PrettyPrintMirOptions::from_cli(self.tcx);
+        write_mir_fn(
+            self.tcx,
+            &self.body.borrow(),
+            &mut |_, _| Ok(()),
+            &mut w2,
+            options,
+        )
+        .unwrap();
     }
     fn depth_first_search_postorder(
         dom_tree: &HashMap<BasicBlock, Vec<BasicBlock>>,
@@ -304,15 +347,15 @@ impl<'tcx> SSATransformer<'tcx> {
                     if !matches!(rvalue, Rvalue::Aggregate(..)) {
                         match rvalue {
                             Rvalue::Use(ref mut operand) => {
-                                                        self.replace_with_latest_def(operand);
-                                                    }
+                                self.replace_with_latest_def(operand);
+                            }
                             Rvalue::BinaryOp(op, box (ref mut operand1, ref mut operand2)) => {
-                                                        self.replace_with_latest_def(operand1);
-                                                        self.replace_with_latest_def(operand2);
-                                                    }
+                                self.replace_with_latest_def(operand1);
+                                self.replace_with_latest_def(operand2);
+                            }
                             Rvalue::UnaryOp(op, ref mut operand) => {
-                                                        self.replace_with_latest_def(operand);
-                                                    }
+                                self.replace_with_latest_def(operand);
+                            }
                             Rvalue::Repeat(operand, _) => todo!(),
                             Rvalue::Ref(region, borrow_kind, place) => todo!(),
                             Rvalue::ThreadLocalRef(def_id) => todo!(),
@@ -323,7 +366,7 @@ impl<'tcx> SSATransformer<'tcx> {
                             Rvalue::Aggregate(aggregate_kind, index_vec) => todo!(),
                             Rvalue::ShallowInitBox(operand, ty) => todo!(),
                             Rvalue::CopyForDeref(place) => todo!(),
-Rvalue::RawPtr(mutability, place) => todo!(),
+                            Rvalue::RawPtr(mutability, place) => todo!(),
                         }
                         // 遍历 rvalue 中的操作数，并执行变量重命名
                         // for operand in rvalue.operands_mut() {
