@@ -85,72 +85,51 @@ use rustc_middle::mir::*;
 use super::Replacer::*;
 use crate::SSA::ssa::SsaLocals;
 pub struct SSATransformer<'tcx> {
-    tcx: TyCtxt<'tcx>, // TyCtxt 上下文
-    def_id: LocalDefId,
-    pub body: Body<'tcx>,                           // MIR 的优化中间表示
-    cfg: HashMap<BasicBlock, Vec<BasicBlock>>,      // 控制流图
-    dominators: Dominators<BasicBlock>,             // 支配者分析结果
-    dom_tree: HashMap<BasicBlock, Vec<BasicBlock>>, // 支配树
-    df: HashMap<BasicBlock, HashSet<BasicBlock>>,   // 支配前沿
-    local_assign_blocks: HashMap<Local, HashSet<BasicBlock>>, // 局部变量的赋值块映射
-    reaching_def: FxHashMap<Local, Vec<Local>>,
+    pub tcx: TyCtxt<'tcx>, // TyCtxt 上下文
+    pub def_id: LocalDefId,
+    pub body: Body<'tcx>,                               // MIR 的优化中间表示
+    pub cfg: HashMap<BasicBlock, Vec<BasicBlock>>,      // 控制流图
+    pub dominators: Dominators<BasicBlock>,             // 支配者分析结果
+    pub dom_tree: HashMap<BasicBlock, Vec<BasicBlock>>, // 支配树
+    pub df: HashMap<BasicBlock, HashSet<BasicBlock>>,   // 支配前沿
+    pub local_assign_blocks: HashMap<Local, HashSet<BasicBlock>>, // 局部变量的赋值块映射
+    pub reaching_def: HashMap<Local, Option<Local>>,
+    pub local_index: u32,
+    pub local_defination_block: HashMap<Local, BasicBlock>,
 }
 
 impl<'tcx> SSATransformer<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> Self {
-        let mut body_clone = tcx.optimized_mir(def_id).clone();
+    pub fn new(tcx: TyCtxt<'tcx>, body: &Body<'tcx>, def_id: LocalDefId) -> Self {
         // let mut body = tcx.mir_built(def_id).borrow_mut();
 
-        let cfg: HashMap<BasicBlock, Vec<BasicBlock>> =
-            Self::extract_cfg_from_predecessors(&body_clone);
+        let cfg: HashMap<BasicBlock, Vec<BasicBlock>> = Self::extract_cfg_from_predecessors(&body);
 
-        let dominators: Dominators<BasicBlock> = body_clone.basic_blocks.dominators().clone();
+        let dominators: Dominators<BasicBlock> = body.basic_blocks.dominators().clone();
 
-        let dom_tree: HashMap<BasicBlock, Vec<BasicBlock>> =
-            Self::construct_dominance_tree(&body_clone);
+        let dom_tree: HashMap<BasicBlock, Vec<BasicBlock>> = Self::construct_dominance_tree(&body);
 
         let df: HashMap<BasicBlock, HashSet<BasicBlock>> =
-            Self::compute_dominance_frontier(&body_clone, &dom_tree);
+            Self::compute_dominance_frontier(&body, &dom_tree);
 
         let local_assign_blocks: HashMap<Local, HashSet<BasicBlock>> =
-            Self::map_locals_to_assign_blocks(&body_clone);
-        let body = &mut body_clone;
-
-        let param_env = tcx.param_env_reveal_all_normalized(body.source.def_id());
-        let ssa = SsaLocals::new(tcx, body, param_env);
-
-        let fully_moved = fully_moved_locals(&ssa, body);
-        debug!(?fully_moved);
-
-        let mut storage_to_remove = BitSet::new_empty(fully_moved.domain_size());
-        for (local, &head) in ssa.copy_classes().iter_enumerated() {
-            if local != head {
-                storage_to_remove.insert(head);
-            }
-        }
-
-        let any_replacement = ssa.copy_classes().iter_enumerated().any(|(l, &h)| l != h);
-
-        Replacer {
-            tcx,
-            copy_classes: ssa.copy_classes(),
-            fully_moved,
-            borrowed_locals: ssa.borrowed_locals(),
-            storage_to_remove,
-        }
-        .visit_body_preserves_cfg(body);
+            Self::map_locals_to_assign_blocks(&body);
+        let local_defination_block: HashMap<Local, BasicBlock> =
+            Self::map_locals_to_definition_block(&body);
         SSATransformer {
             tcx,
             def_id,
-            body: body_clone,
+            body: body.clone(),
             cfg,
             dominators,
             dom_tree,
             df,
             local_assign_blocks,
-            reaching_def: FxHashMap::default(),
+            reaching_def: HashMap::default(),
+            local_index: body.local_decls.len() as u32,
+            local_defination_block: local_defination_block,
         }
     }
+
     pub fn return_body_ref(&self) -> &Body<'tcx> {
         &self.body
     }
@@ -184,7 +163,30 @@ impl<'tcx> SSATransformer<'tcx> {
         )
         .unwrap();
     }
-    fn depth_first_search_postorder(
+    fn map_locals_to_definition_block(body: &Body) -> HashMap<Local, BasicBlock> {
+        let mut local_to_block_map: HashMap<Local, BasicBlock> = HashMap::new();
+
+        // 遍历每个基本块
+        for (bb, block_data) in body.basic_blocks.iter_enumerated() {
+            // 遍历当前基本块中的每条语句
+            for statement in &block_data.statements {
+                match &statement.kind {
+                    // 如果语句是一个赋值语句
+                    StatementKind::Assign(box (place, _)) => {
+                        // 如果是局部变量（local）的定义
+                        if let Some(local) = place.as_local() {
+                            // 只有第一次遇到局部变量时才会映射它
+                            local_to_block_map.entry(local).or_insert(bb);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        local_to_block_map
+    }
+    pub fn depth_first_search_postorder(
         dom_tree: &HashMap<BasicBlock, Vec<BasicBlock>>,
     ) -> Vec<BasicBlock> {
         let mut visited: HashSet<BasicBlock> = HashSet::new();
@@ -302,226 +304,288 @@ impl<'tcx> SSATransformer<'tcx> {
             }
         }
     }
-    fn replace_with_latest_def(&mut self, operand: &mut Operand<'tcx>) {
-        if let Operand::Copy(place) | Operand::Move(place) = operand {
-            if let Some(local) = place.as_local() {
-                if let Some(def_stack) = self.reaching_def.get(&local) {
-                    if let Some(current_def) = def_stack.last() {
-                        *place = Place::from(*current_def);
-                    }
-                }
+
+    pub fn is_phi_statement(statement: &Statement<'tcx>) -> bool {
+        match &statement.kind {
+            StatementKind::Assign(box (lhs, rhs)) => {
+                // 1. 检查左值是 Local，且右值是 Aggregate 类型
+                return matches!(rhs, Rvalue::Aggregate(_, _));
             }
+            _ => {}
         }
+        false
     }
+    // pub fn rename_variables(
+    //     &mut self,
+    //     tcx: TyCtxt<'tcx>,
+    //     body: &mut Body<'tcx>,
+    //     dominator_tree: &HashMap<BasicBlock, Vec<BasicBlock>>,
+    // ) {
+    //     // 初始化每个变量的 reachingDef
+    //     for local in body.local_decls.indices() {
+    //         self.reaching_def.insert(local, vec![local]);
+    //     }
 
-    /// 主算法：执行 SSA 变量重命名
-    pub fn rename_variables(
-        &mut self,
-        tcx: TyCtxt<'tcx>,
-        body: &mut Body<'tcx>,
-        dominator_tree: &HashMap<BasicBlock, Vec<BasicBlock>>,
-    ) {
-        // 初始化每个变量的 reachingDef
-        for local in body.local_decls.indices() {
-            self.reaching_def.insert(local, vec![local]);
-        }
+    //     // 深度优先先序遍历支配树
+    //     for bb in Self::depth_first_search_postorder(dominator_tree) {
+    //         self.process_basic_block(bb, body);
+    //     }
+    //     // for succ_bb in body.basic_blocks[bb].terminator().successors() {
+    //     //     self.process_phi_functions(succ_bb, body);
+    //     // }
+    // }
 
-        // 深度优先先序遍历支配树
-        for bb in Self::depth_first_search_postorder(dominator_tree) {
-            self.process_basic_block(bb, body);
-        }
-        // for succ_bb in body.basic_blocks[bb].terminator().successors() {
-        //     self.process_phi_functions(succ_bb, body);
-        // }
-    }
+    // /// 处理单个基本块
+    // fn process_basic_block(&mut self, bb: BasicBlock, body: &mut Body<'tcx>) {
+    //     let statements = &mut body.basic_blocks_mut()[bb].statements;
 
-    /// 处理单个基本块
-    fn process_basic_block(&mut self, bb: BasicBlock, body: &mut Body<'tcx>) {
-        let statements = &mut body.basic_blocks_mut()[bb].statements;
+    //     // 线性处理基本块中的每条指令
+    //     for stmt in statements.iter_mut() {
+    //         match &mut stmt.kind {
+    //             StatementKind::Assign(box (place, rvalue)) => {
+    //                 // 仅处理非聚合类型的赋值
+    //                 if !matches!(rvalue, Rvalue::Aggregate(..)) {
+    //                     match rvalue {
+    //                         Rvalue::Use(ref mut operand) => {
+    //                             self.replace_with_latest_def(operand);
+    //                         }
+    //                         Rvalue::BinaryOp(op, box (ref mut operand1, ref mut operand2)) => {
+    //                             self.replace_with_latest_def(operand1);
+    //                             self.replace_with_latest_def(operand2);
+    //                         }
+    //                         Rvalue::UnaryOp(op, ref mut operand) => {
+    //                             self.replace_with_latest_def(operand);
+    //                         }
+    //                         Rvalue::Repeat(operand, _) => todo!(),
+    //                         Rvalue::Ref(region, borrow_kind, place) => todo!(),
+    //                         Rvalue::ThreadLocalRef(def_id) => todo!(),
+    //                         Rvalue::Len(place) => todo!(),
+    //                         Rvalue::Cast(cast_kind, operand, ty) => todo!(),
+    //                         Rvalue::NullaryOp(null_op, ty) => todo!(),
+    //                         Rvalue::Discriminant(place) => todo!(),
+    //                         Rvalue::Aggregate(aggregate_kind, index_vec) => todo!(),
+    //                         Rvalue::ShallowInitBox(operand, ty) => todo!(),
+    //                         Rvalue::CopyForDeref(place) => todo!(),
+    //                         Rvalue::RawPtr(mutability, place) => todo!(),
+    //                     }
+    //                     // 遍历 rvalue 中的操作数，并执行变量重命名
+    //                     // for operand in rvalue.operands_mut() {
+    //                     //     if let Operand::Copy(place) | Operand::Move(place) = operand {
+    //                     //         if let Some(local) = place.as_local() {
+    //                     //             // 替换使用变量为其最新定义
+    //                     //             self.update_reaching_def(local);
+    //                     //             if let Some(current_def) =
+    //                     //                 self.reaching_def.get(&local).and_then(|stack| stack.last())
+    //                     //             {
+    //                     //                 *place = Place::from(*current_def);
+    //                     //             }
+    //                     //         }
+    //                     //     }
+    //                     // }
+    //                 }
+    //                 if place.as_local().is_some() {
+    //                     // replace_with_latest_def(place);
+    //                     // self.rename_def(place, body);
+    //                 }
+    //             }
+    //             _ => {}
+    //         }
+    //     }
 
-        // 线性处理基本块中的每条指令
-        for stmt in statements.iter_mut() {
-            match &mut stmt.kind {
-                StatementKind::Assign(box (place, rvalue)) => {
-                    // 仅处理非聚合类型的赋值
-                    if !matches!(rvalue, Rvalue::Aggregate(..)) {
-                        match rvalue {
-                            Rvalue::Use(ref mut operand) => {
-                                self.replace_with_latest_def(operand);
-                            }
-                            Rvalue::BinaryOp(op, box (ref mut operand1, ref mut operand2)) => {
-                                self.replace_with_latest_def(operand1);
-                                self.replace_with_latest_def(operand2);
-                            }
-                            Rvalue::UnaryOp(op, ref mut operand) => {
-                                self.replace_with_latest_def(operand);
-                            }
-                            Rvalue::Repeat(operand, _) => todo!(),
-                            Rvalue::Ref(region, borrow_kind, place) => todo!(),
-                            Rvalue::ThreadLocalRef(def_id) => todo!(),
-                            Rvalue::Len(place) => todo!(),
-                            Rvalue::Cast(cast_kind, operand, ty) => todo!(),
-                            Rvalue::NullaryOp(null_op, ty) => todo!(),
-                            Rvalue::Discriminant(place) => todo!(),
-                            Rvalue::Aggregate(aggregate_kind, index_vec) => todo!(),
-                            Rvalue::ShallowInitBox(operand, ty) => todo!(),
-                            Rvalue::CopyForDeref(place) => todo!(),
-                            Rvalue::RawPtr(mutability, place) => todo!(),
-                        }
-                        // 遍历 rvalue 中的操作数，并执行变量重命名
-                        // for operand in rvalue.operands_mut() {
-                        //     if let Operand::Copy(place) | Operand::Move(place) = operand {
-                        //         if let Some(local) = place.as_local() {
-                        //             // 替换使用变量为其最新定义
-                        //             self.update_reaching_def(local);
-                        //             if let Some(current_def) =
-                        //                 self.reaching_def.get(&local).and_then(|stack| stack.last())
-                        //             {
-                        //                 *place = Place::from(*current_def);
-                        //             }
-                        //         }
-                        //     }
-                        // }
-                    }
-                    if place.as_local().is_some() {
-                        // replace_with_latest_def(place);
-                        // self.rename_def(place, body);
-                    }
-                }
-                _ => {}
-            }
-        }
+    //     // 处理后继块中的 φ 函数
+    //     let successors: Vec<_> = body.basic_blocks_mut()[bb]
+    //         .terminator()
+    //         .successors()
+    //         .collect();
+    //     for successor in successors {
+    //         self.process_phi_functions(successor, body);
+    //     }
+    // }
 
-        // 处理后继块中的 φ 函数
-        let successors: Vec<_> = body.basic_blocks_mut()[bb]
-            .terminator()
-            .successors()
-            .collect();
-        for successor in successors {
-            self.process_phi_functions(successor, body);
-        }
-    }
+    // /// 重命名指令中的使用变量
+    // // fn rename_uses(&mut self, rvalue: &mut Rvalue<'tcx>) {
+    // //     // 遍历 Rvalue 中的变量使用
+    // //     for operand in rvalue.operands_mut() {
+    // //         if let Operand::Copy(place) | Operand::Move(place) = operand {
+    // //             if let Some(local) = place.as_local() {
+    // //                 if let Some(def_stack) = self.reaching_def.get(&local) {
+    // //                     if let Some(current_def) = def_stack.last() {
+    // //                         *place = Place::from(*current_def);
+    // //                     }
+    // //                 }
+    // //             }
+    // //         }
+    // //     }
+    // // }
 
-    /// 重命名指令中的使用变量
-    // fn rename_uses(&mut self, rvalue: &mut Rvalue<'tcx>) {
-    //     // 遍历 Rvalue 中的变量使用
-    //     for operand in rvalue.operands_mut() {
-    //         if let Operand::Copy(place) | Operand::Move(place) = operand {
-    //             if let Some(local) = place.as_local() {
-    //                 if let Some(def_stack) = self.reaching_def.get(&local) {
-    //                     if let Some(current_def) = def_stack.last() {
-    //                         *place = Place::from(*current_def);
+    // // /// 为指令中定义的变量分配新版本
+    // fn rename_def(&mut self, place: &mut Place<'tcx>, body: &mut Body<'tcx>) {
+    //     if let Some(local) = place.as_local() {
+    //         let new_local = self.create_fresh_variable(local, body);
+    //         if let Some(def_stack) = self.reaching_def.get_mut(&local) {
+    //             def_stack.push(new_local);
+    //         }
+    //         *place = Place::from(new_local);
+    //     }
+    // }
+
+    // /// 处理后继块中的 φ 函数
+    // fn process_phi_functions(&mut self, bb: BasicBlock, body: &mut Body<'tcx>) {
+    //     // if let Some(Terminator {
+    //     //     kind: TerminatorKind::Call { args, .. },
+    //     //     ..
+    //     // }) = &body.basic_blocks[bb].terminator
+    //     // {
+    //     //     for arg in args {
+    //     //         if let Operand::Copy(place) | Operand::Move(place) = arg {
+    //     //             if let Some(local) = place.as_local() {
+    //     //                 if let Some(def_stack) = self.reaching_def.get(&local) {
+    //     //                     if let Some(current_def) = def_stack.last() {
+    //     //                         *place = Place::from(*current_def);
+    //     //                     }
+    //     //                 }
+    //     //             }
+    //     //         }
+    //     //     }
+    //     // }
+    // }
+
+    // /// 创建一个新的变量版本
+    // fn create_fresh_variable(&mut self, local: Local, body: &mut Body<'_>) -> Local {
+    //     // 假设新的 Local 分配基于现有的数量
+    //     let new_local_index = body.local_decls.len();
+
+    //     // 创建一个新的变量声明
+    //     let new_decl = body.local_decls[local].clone();
+    //     let new_local = body.local_decls.push(new_decl);
+    //     new_local
+    // }
+    // pub fn insert_phi_statment(&mut self,body: &mut Body<'tcx>) {
+    //     // 初始化所有基本块的 phi 函数集合
+    //     let mut phi_functions: HashMap<BasicBlock, HashSet<Local>> = HashMap::new();
+    //     for bb in self.body.basic_blocks.indices() {
+    //         phi_functions.insert(bb, HashSet::new());
+    //     }
+    //     let variables: Vec<Local> = self
+    //         .local_assign_blocks
+    //         .iter()
+    //         .filter(|(_, blocks)| blocks.len() >= 2) // 只保留基本块数量大于等于 2 的条目
+    //         .map(|(&local, _)| local) // 提取 Local
+    //         .collect();
+    //     print!("{:?}", variables);
+    //     for var in &variables {
+    //         // 获取变量的定义位置
+    //         if let Some(def_blocks) = self.local_assign_blocks.get(var) {
+    //             let mut worklist: VecDeque<BasicBlock> = def_blocks.iter().cloned().collect();
+    //             let mut processed: HashSet<BasicBlock> = HashSet::new();
+
+    //             while let Some(block) = worklist.pop_front() {
+    //                 if let Some(df_blocks) = self.df.get(&block) {
+    //                     for &df_block in df_blocks {
+    //                         if !processed.contains(&df_block) {
+    //                             phi_functions.get_mut(&df_block).unwrap().insert(*var);
+    //                             processed.insert(df_block);
+    //                             if self.local_assign_blocks[var].contains(&df_block) {
+    //                                 worklist.push_back(df_block);
+    //                             }
+    //                         }
     //                     }
     //                 }
     //             }
     //         }
     //     }
+
+    //     for (block, vars) in phi_functions {
+    //         for var in vars {
+    //             let decl = self.body.local_decls[var].clone();
+    //             let new_var = self.body.local_decls.push(decl);
+    //             let predecessors = self.body.basic_blocks.predecessors()[block].clone();
+
+    //             // 构造元组元素，使用占位变量
+    //             let mut operands = IndexVec::with_capacity(predecessors.len());
+    //             for _ in 0..predecessors.len() {
+    //                 operands.push(Operand::Copy(Place::from(var)));
+    //             } // 创建 phi 语句
+    //             let phi_stmt = Statement {
+    //                 source_info: SourceInfo::outermost(self.body.span),
+    //                 kind: StatementKind::Assign(Box::new((
+    //                     Place::from(new_var), // 左值是变量
+    //                     Rvalue::Aggregate(
+    //                         Box::new(AggregateKind::Tuple), // 元组类型
+    //                         operands,
+    //                     ),
+    //                 ))),
+    //             };
+
+    //             // 插入到基本块的开头
+    //             self.body.basic_blocks_mut()[block]
+    //                 .statements
+    //                 .insert(0, phi_stmt);
+    //         }
+    //     }
     // }
+    // // pub fn insert_phi_statment(&mut self) {
+    // //     // 初始化所有基本块的 phi 函数集合
+    // //     let mut phi_functions: HashMap<BasicBlock, HashSet<Local>> = HashMap::new();
+    // //     for bb in self.body.basic_blocks.indices() {
+    // //         phi_functions.insert(bb, HashSet::new());
+    // //     }
+    // //     let variables: Vec<Local> = self
+    // //         .local_assign_blocks
+    // //         .iter()
+    // //         .filter(|(_, blocks)| blocks.len() >= 2) // 只保留基本块数量大于等于 2 的条目
+    // //         .map(|(&local, _)| local) // 提取 Local
+    // //         .collect();
+    // //     print!("{:?}", variables);
+    // //     for var in &variables {
+    // //         // 获取变量的定义位置
+    // //         if let Some(def_blocks) = self.local_assign_blocks.get(var) {
+    // //             let mut worklist: VecDeque<BasicBlock> = def_blocks.iter().cloned().collect();
+    // //             let mut processed: HashSet<BasicBlock> = HashSet::new();
 
-    // /// 为指令中定义的变量分配新版本
-    fn rename_def(&mut self, place: &mut Place<'tcx>, body: &mut Body<'tcx>) {
-        if let Some(local) = place.as_local() {
-            let new_local = self.create_fresh_variable(local, body);
-            if let Some(def_stack) = self.reaching_def.get_mut(&local) {
-                def_stack.push(new_local);
-            }
-            *place = Place::from(new_local);
-        }
-    }
+    // //             while let Some(block) = worklist.pop_front() {
+    // //                 if let Some(df_blocks) = self.df.get(&block) {
+    // //                     for &df_block in df_blocks {
+    // //                         if !processed.contains(&df_block) {
+    // //                             phi_functions.get_mut(&df_block).unwrap().insert(*var);
+    // //                             processed.insert(df_block);
+    // //                             if self.local_assign_blocks[var].contains(&df_block) {
+    // //                                 worklist.push_back(df_block);
+    // //                             }
+    // //                         }
+    // //                     }
+    // //                 }
+    // //             }
+    // //         }
+    // //     }
 
-    /// 处理后继块中的 φ 函数
-    fn process_phi_functions(&mut self, bb: BasicBlock, body: &mut Body<'tcx>) {
-        // if let Some(Terminator {
-        //     kind: TerminatorKind::Call { args, .. },
-        //     ..
-        // }) = &body.basic_blocks[bb].terminator
-        // {
-        //     for arg in args {
-        //         if let Operand::Copy(place) | Operand::Move(place) = arg {
-        //             if let Some(local) = place.as_local() {
-        //                 if let Some(def_stack) = self.reaching_def.get(&local) {
-        //                     if let Some(current_def) = def_stack.last() {
-        //                         *place = Place::from(*current_def);
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
-    }
+    // //     for (block, vars) in phi_functions {
+    // //         for var in vars {
+    // //             let decl = self.body.local_decls[var].clone();
+    // //             let new_var = self.body.local_decls.push(decl);
+    // //             let predecessors = self.body.basic_blocks.predecessors()[block].clone();
 
-    /// 创建一个新的变量版本
-    fn create_fresh_variable(&mut self, local: Local, body: &mut Body<'_>) -> Local {
-        // 假设新的 Local 分配基于现有的数量
-        let new_local_index = body.local_decls.len();
+    // //             // 构造元组元素，使用占位变量
+    // //             let mut operands = IndexVec::with_capacity(predecessors.len());
+    // //             for _ in 0..predecessors.len() {
+    // //                 operands.push(Operand::Copy(Place::from(var)));
+    // //             } // 创建 phi 语句
+    // //             let phi_stmt = Statement {
+    // //                 source_info: SourceInfo::outermost(self.body.span),
+    // //                 kind: StatementKind::Assign(Box::new((
+    // //                     Place::from(new_var), // 左值是变量
+    // //                     Rvalue::Aggregate(
+    // //                         Box::new(AggregateKind::Tuple), // 元组类型
+    // //                         operands,
+    // //                     ),
+    // //                 ))),
+    // //             };
 
-        // 创建一个新的变量声明
-        let new_decl = body.local_decls[local].clone();
-        let new_local = body.local_decls.push(new_decl);
-        new_local
-    }
-    pub fn insert_phi_statment(&mut self) {
-        // 初始化所有基本块的 phi 函数集合
-        let mut phi_functions: HashMap<BasicBlock, HashSet<Local>> = HashMap::new();
-        for bb in self.body.basic_blocks.indices() {
-            phi_functions.insert(bb, HashSet::new());
-        }
-        let variables: Vec<Local> = self
-            .local_assign_blocks
-            .iter()
-            .filter(|(_, blocks)| blocks.len() >= 2) // 只保留基本块数量大于等于 2 的条目
-            .map(|(&local, _)| local) // 提取 Local
-            .collect();
-        print!("{:?}", variables);
-        for var in &variables {
-            // 获取变量的定义位置
-            if let Some(def_blocks) = self.local_assign_blocks.get(var) {
-                let mut worklist: VecDeque<BasicBlock> = def_blocks.iter().cloned().collect();
-                let mut processed: HashSet<BasicBlock> = HashSet::new();
-
-                while let Some(block) = worklist.pop_front() {
-                    if let Some(df_blocks) = self.df.get(&block) {
-                        for &df_block in df_blocks {
-                            if !processed.contains(&df_block) {
-                                phi_functions.get_mut(&df_block).unwrap().insert(*var);
-                                processed.insert(df_block);
-                                if self.local_assign_blocks[var].contains(&df_block) {
-                                    worklist.push_back(df_block);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for (block, vars) in phi_functions {
-            for var in vars {
-                let decl = self.body.local_decls[var].clone();
-                let new_var = self.body.local_decls.push(decl);
-                let predecessors = self.body.basic_blocks.predecessors()[block].clone();
-
-                // 构造元组元素，使用占位变量
-                let mut operands = IndexVec::with_capacity(predecessors.len());
-                for _ in 0..predecessors.len() {
-                    operands.push(Operand::Copy(Place::from(var)));
-                } // 创建 phi 语句
-                let phi_stmt = Statement {
-                    source_info: SourceInfo::outermost(self.body.span),
-                    kind: StatementKind::Assign(Box::new((
-                        Place::from(new_var), // 左值是变量
-                        Rvalue::Aggregate(
-                            Box::new(AggregateKind::Tuple), // 元组类型
-                            operands,
-                        ),
-                    ))),
-                };
-
-                // 插入到基本块的开头
-                self.body.basic_blocks_mut()[block]
-                    .statements
-                    .insert(0, phi_stmt);
-            }
-        }
-    }
+    // //             // 插入到基本块的开头
+    // //             self.body.basic_blocks_mut()[block]
+    // //                 .statements
+    // //                 .insert(0, phi_stmt);
+    // //         }
+    // //     }
+    // // }
 }

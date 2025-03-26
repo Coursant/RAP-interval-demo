@@ -65,7 +65,6 @@ use RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph;
 use RAP_interval_demo::SSA::{PassRunner::*, SSATransformer::*};
 
 fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
-
     // let mir_built = tcx.mir_built(def_id);
     // let body = mir_built.borrow();
 
@@ -76,12 +75,10 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
     passrunner.run_pass(body_mut_ref);
     passrunner.print_diff(body_mut_ref);
 
-
     let body_clone = tcx.optimized_mir(def_id).clone();
 
-
     // let mut ssa: SSATransformer<'tcx> = SSATransformer::new(tcx, def_id);
-    // // ssa.insert_phi_statment();
+    // ssa.insert_phi_statment(body_mut_ref);
     // ssa.analyze();
     // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(tcx);
     // println!("{:?}", cg.vars);
