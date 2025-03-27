@@ -218,12 +218,11 @@ impl<'tcx> Replacer<'_, 'tcx> {
                 StatementKind::Assign(box (place, rvalue)) => {
                     {
                         if !is_phi {
-                            // self.update_reachinf_def(&place.local, &bb);
-                            self.replace_rvalue(rvalue);
-                            self.rename_local_def(place);
+                            self.replace_rvalue(rvalue,&bb);
+                            self.rename_local_def(place,&bb);
                         } else {
                             //每个定义生成的变量
-                            self.rename_local_def(place);
+                            self.rename_local_def(place,&bb);
                         }
                     }
                 }
@@ -274,39 +273,42 @@ impl<'tcx> Replacer<'_, 'tcx> {
         // }
     }
 
-    fn replace_rvalue(&mut self, rvalue: &mut Rvalue<'tcx>) {
+    fn replace_rvalue(&mut self, rvalue: &mut Rvalue<'tcx>,bb: &BasicBlock) {
         match rvalue {
             Rvalue::Use(operand)
             | Rvalue::Repeat(operand, _)
             | Rvalue::UnaryOp(_, operand)
             | Rvalue::Cast(_, operand, _)
             | Rvalue::ShallowInitBox(operand, _) => {
-                self.replace_operand(operand);
+                self.replace_operand(operand,&bb);
             }
             Rvalue::BinaryOp(_, box (lhs, rhs)) | Rvalue::BinaryOp(_, box (lhs, rhs)) => {
-                self.replace_operand(lhs);
-                self.replace_operand(rhs);
+                self.replace_operand(lhs,&bb);
+                self.replace_operand(rhs,&bb);
             }
             Rvalue::Aggregate(_, operands) => {
                 for operand in operands {
-                    self.replace_operand(operand);
+                    self.replace_operand(operand,&bb);
                 }
             }
             _ => {}
         }
     }
 
-    fn replace_operand(&mut self, operand: &mut Operand<'tcx>) {
+    fn replace_operand(&mut self, operand: &mut Operand<'tcx>,bb: &BasicBlock) {
+
         if let Operand::Copy(mut place) | Operand::Move(mut place) = operand {
-            self.replace_place(&mut place);
+            self.replace_place(&mut place,&bb);
         }
     }
 
-    fn replace_place(&mut self, place: &mut Place<'tcx>) {
+    fn replace_place(&mut self, place: &mut Place<'tcx>,bb: &BasicBlock) {
+        self.update_reachinf_def(&place.local, &bb);
+
         if let Some(reaching_local) = self.ssatransformer.reaching_def.get(&place.local) {
             let local = reaching_local.unwrap().clone();
-            place.local = local;
-            //  *place = Place::from(local);
+            // place.local = local;
+             *place = Place::from(local);
         }
     }
 
@@ -318,8 +320,10 @@ impl<'tcx> Replacer<'_, 'tcx> {
         // }
     }
 
-    fn rename_local_def(&mut self, place: &mut Place<'tcx>) {
+    fn rename_local_def(&mut self, place: &mut Place<'tcx>,bb: &BasicBlock) {
         // let old_local = place.as_local().as_mut().unwrap();
+        self.update_reachinf_def(&place.local, &bb);
+
         let Place {
             local: old_local,
             projection: _,
