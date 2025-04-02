@@ -7,9 +7,9 @@ use std::fmt;
 use super::range::Range;
 
 #[derive(Debug)]
-pub enum IntervalType<'tcx, T: PartialOrd + Clone + Bounded> {
+pub enum IntervalType<'a, T: PartialOrd + Clone + Bounded> {
     Basic(BasicInterval<T>),
-    Symb(SymbInterval<'tcx, T>), // Using 'static for simplicity, adjust lifetime as needed
+    Symb(SymbInterval<'a, T>), // Using 'static for simplicity, adjust lifetime as needed
 }
 
 trait BasicIntervalTrait<T: PartialOrd + Clone + Bounded> {
@@ -47,14 +47,14 @@ impl<T: PartialOrd + Clone + Bounded> BasicIntervalTrait<T> for BasicInterval<T>
 }
 
 #[derive(Debug)]
-pub struct SymbInterval<'tcx, T: PartialOrd + Clone + Bounded> {
+pub struct SymbInterval<'a, T: PartialOrd + Clone + Bounded> {
     range: Range<T>,
-    symbound: &'tcx Place<'tcx>,
+    symbound: &'a Place<'a>,
     predicate: bool,
 }
 
-impl<'tcx, T: PartialOrd + Clone + Bounded> SymbInterval<'tcx, T> {
-    pub fn new(range: Range<T>, symbound: &'tcx Place<'tcx>, predicate: bool) -> Self {
+impl<'a, T: PartialOrd + Clone + Bounded> SymbInterval<'a, T> {
+    pub fn new(range: Range<T>, symbound: &'a Place<'a>, predicate: bool) -> Self {
         Self {
             range: range,
             symbound,
@@ -66,7 +66,7 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> SymbInterval<'tcx, T> {
         &self.predicate
     }
 
-    pub fn get_bound(&self) -> &Place<'tcx> {
+    pub fn get_bound(&self) -> &Place<'a> {
         &self.symbound
     }
 
@@ -78,7 +78,7 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> SymbInterval<'tcx, T> {
     }
 }
 
-impl<'tcx, T: PartialOrd + Clone + Bounded> BasicIntervalTrait<T> for SymbInterval<'tcx, T> {
+impl<'a, T: PartialOrd + Clone + Bounded> BasicIntervalTrait<T> for SymbInterval<'a, T> {
     // fn get_value_id(&self) -> IntervalId {
     //     IntervalId::SymbIntervalId
     // }
@@ -100,18 +100,18 @@ pub trait Operation<T: PartialOrd + Clone + Bounded> {
 }
 
 // Define the BasicOp struct
-pub struct BasicOp<'tcx, T: PartialOrd + Clone + Bounded> {
-    pub intersect: &'tcx mut BasicInterval<T>, // The range associated with the operation
-    pub sink: &'tcx mut VarNode<'tcx, T>,      // The target node storing the result
-    pub inst: &'tcx Statement<'tcx>,           // The instruction that originated this operation
+pub struct BasicOp<'a, T: PartialOrd + Clone + Bounded> {
+    pub intersect: &'a mut BasicInterval<T>, // The range associated with the operation
+    pub sink: &'a mut VarNode<'a, T>,        // The target node storing the result
+    pub inst: &'a Statement<'a>,             // The instruction that originated this operation
 }
 
-impl<'tcx, T: PartialOrd + Clone + Bounded> BasicOp<'tcx, T> {
+impl<'a, T: PartialOrd + Clone + Bounded> BasicOp<'a, T> {
     // Constructor for creating a new BasicOp
     pub fn new(
-        intersect: &'tcx mut BasicInterval<T>,
-        sink: &'tcx mut VarNode<'tcx, T>,
-        inst: &'tcx Statement<'tcx>,
+        intersect: &'a mut BasicInterval<T>,
+        sink: &'a mut VarNode<'a, T>,
+        inst: &'a Statement<'a>,
     ) -> Self {
         BasicOp {
             intersect,
@@ -120,7 +120,7 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> BasicOp<'tcx, T> {
         }
     }
 
-    pub fn get_instruction(&self) -> Option<&Statement<'tcx>> {
+    pub fn get_instruction(&self) -> Option<&Statement<'a>> {
         Some(self.inst)
     }
 
@@ -130,19 +130,19 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> BasicOp<'tcx, T> {
         self.intersect.set_range(new_intersect);
     }
 
-    pub fn get_sink(&self) -> &VarNode<'tcx, T> {
+    pub fn get_sink(&self) -> &VarNode<'a, T> {
         self.sink
     }
     // Returns the instruction that originated this operation
 
     // Returns the target of the operation (sink), mutable version
-    pub fn get_sink_mut(&mut self) -> &mut VarNode<'tcx, T> {
+    pub fn get_sink_mut(&mut self) -> &mut VarNode<'a, T> {
         &mut self.sink
     }
 }
 
 // Implement the Operation trait for BasicOp
-impl<'tcx, T: PartialOrd + Clone + Bounded> Operation<T> for BasicOp<'tcx, T> {
+impl<'a, T: PartialOrd + Clone + Bounded> Operation<T> for BasicOp<'a, T> {
     fn get_value_id(&self) -> u32 {
         0 // Placeholder implementation
     }
@@ -156,16 +156,16 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> Operation<T> for BasicOp<'tcx, T> {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct VarNode<'tcx, T: PartialOrd + Clone + Bounded> {
+pub struct VarNode<'a, T: PartialOrd + Clone + Bounded> {
     // The program variable which is represented.
-    v: &'tcx Place<'tcx>,
+    v: &'a Place<'a>,
     // A Range associated to the variable.
     interval: Range<T>,
     // Used by the crop meet operator.
     abstract_state: char,
 }
-impl<'tcx, T: PartialOrd + Clone + Bounded> VarNode<'tcx, T> {
-    pub fn new(v: &'tcx Place<'tcx>) -> Self {
+impl<'a, T: PartialOrd + Clone + Bounded> VarNode<'a, T> {
+    pub fn new(v: &'a Place<'a>) -> Self {
         Self {
             v,
             interval: Range::default(),
@@ -202,7 +202,7 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> VarNode<'tcx, T> {
     }
 
     /// Returns the variable represented by this node.
-    pub fn get_value(&self) -> &Place<'tcx> {
+    pub fn get_value(&self) -> &Place<'a> {
         &self.v
     }
 
@@ -232,20 +232,20 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> VarNode<'tcx, T> {
     }
 }
 #[derive(Debug)]
-pub struct ValueBranchMap<'tcx, T: PartialOrd + Clone + Bounded> {
-    v: &'tcx Place<'tcx>,         // The value associated with the branch
-    bb_true: &'tcx BasicBlock,    // True side of the branch
-    bb_false: &'tcx BasicBlock,   // False side of the branch
-    itv_t: IntervalType<'tcx, T>, // Interval for the true side
-    itv_f: IntervalType<'tcx, T>,
+pub struct ValueBranchMap<'a, T: PartialOrd + Clone + Bounded> {
+    v: &'a Place<'a>,           // The value associated with the branch
+    bb_true: &'a BasicBlock,    // True side of the branch
+    bb_false: &'a BasicBlock,   // False side of the branch
+    itv_t: IntervalType<'a, T>, // Interval for the true side
+    itv_f: IntervalType<'a, T>,
 }
-impl<'tcx, T: PartialOrd + Clone + Bounded> ValueBranchMap<'tcx, T> {
+impl<'a, T: PartialOrd + Clone + Bounded> ValueBranchMap<'a, T> {
     pub fn new(
-        v: &'tcx Place<'tcx>,
-        bb_true: &'tcx BasicBlock,
-        bb_false: &'tcx BasicBlock,
-        itv_t: IntervalType<'tcx, T>,
-        itv_f: IntervalType<'tcx, T>,
+        v: &'a Place<'a>,
+        bb_true: &'a BasicBlock,
+        bb_false: &'a BasicBlock,
+        itv_t: IntervalType<'a, T>,
+        itv_f: IntervalType<'a, T>,
     ) -> Self {
         Self {
             v,
@@ -267,26 +267,26 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> ValueBranchMap<'tcx, T> {
     }
 
     /// Get the interval associated with the true side of the branch
-    pub fn get_itv_t(&self) -> &IntervalType<'tcx, T> {
+    pub fn get_itv_t(&self) -> &IntervalType<'a, T> {
         &self.itv_t
     }
 
     /// Get the interval associated with the false side of the branch
-    pub fn get_itv_f(&self) -> &IntervalType<'tcx, T> {
+    pub fn get_itv_f(&self) -> &IntervalType<'a, T> {
         &self.itv_f
     }
 
     /// Get the value associated with the branch
-    pub fn get_v(&self) -> &Place<'tcx> {
+    pub fn get_v(&self) -> &Place<'a> {
         self.v
     }
 
-    // pub fn set_itv_t(&mut self, itv: &IntervalType<'tcx, T>) {
+    // pub fn set_itv_t(&mut self, itv: &IntervalType<'a, T>) {
     //     self.itv_t = itv;
     // }
 
     // /// Change the interval associated with the false side of the branch
-    // pub fn set_itv_f(&mut self, itv: &IntervalType<'tcx, T>) {
+    // pub fn set_itv_f(&mut self, itv: &IntervalType<'a, T>) {
     //     self.itv_f = itv;
     // }
 
@@ -296,21 +296,21 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> ValueBranchMap<'tcx, T> {
     // }
 }
 // #[derive(Debug, Clone, )]
-// pub enum PorSKey<'tcx> {
-//     Statement( Statement<'tcx>),
-//     Place(Place<'tcx>),
+// pub enum PorSKey<'a> {
+//     Statement( Statement<'a>),
+//     Place(Place<'a>),
 // }
 
-pub type VarNodes<'tcx, T> = HashMap<&'tcx Place<'tcx>, VarNode<'tcx, T>>;
+pub type VarNodes<'a, T> = HashMap<&'a Place<'a>, VarNode<'a, T>>;
 // pub type VarNodes<'a, T> = HashMap<&'a  Place<'a>, VarNode<'a,  T>>;
 
-pub type GenOprs<'tcx, T> = HashSet<&'tcx BasicOp<'tcx, T>>;
-pub type UseMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, HashSet<&'tcx BasicOp<'tcx, T>>>;
-pub type SymbMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, HashSet<&'tcx BasicOp<'tcx, T>>>;
-pub type DefMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, &'tcx BasicOp<'tcx, T>>;
-pub type ValuesBranchMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, ValueBranchMap<'tcx, T>>;
-// pub type ValuesSwitchMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, ValueSwitchMap<'tcx, T>>;
-// impl<'tcx, T: fmt::Debug + PartialOrd + Clone + Bounded> fmt::Debug for ValueBranchMap<'tcx, T> {
+pub type GenOprs<'a, T> = HashSet<&'a BasicOp<'a, T>>;
+pub type UseMap<'a, T> = HashMap<&'a Place<'a>, HashSet<&'a BasicOp<'a, T>>>;
+pub type SymbMap<'a, T> = HashMap<&'a Place<'a>, HashSet<&'a BasicOp<'a, T>>>;
+pub type DefMap<'a, T> = HashMap<&'a Place<'a>, &'a BasicOp<'a, T>>;
+pub type ValuesBranchMap<'a, T> = HashMap<&'a Place<'a>, ValueBranchMap<'a, T>>;
+// pub type ValuesSwitchMap<'a, T> = HashMap<&'a Place<'a>, ValueSwitchMap<'a, T>>;
+// impl<'a, T: fmt::Debug + PartialOrd + Clone + Bounded> fmt::Debug for ValueBranchMap<'a, T> {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 //         f.debug_struct("ValueBranchMap")
 //             .field("v", &self.v)

@@ -10,27 +10,26 @@ use rustc_mir_transform::*;
 use rustc_span::sym::var;
 
 use std::collections::{HashMap, HashSet};
-pub struct ConstraintGraph<'tcx, T: PartialOrd + Clone + Bounded> {
+pub struct ConstraintGraph<'a, T: PartialOrd + Clone + Bounded> {
     // Protected fields
-    pub tcx: TyCtxt<'tcx>,
-    pub vars: VarNodes<'tcx, T>, // The variables of the source program
-    pub oprs: GenOprs<'tcx, T>,  // The operations of the source program
+    pub vars: VarNodes<'a, T>, // The variables of the source program
+    pub oprs: GenOprs<'a, T>,  // The operations of the source program
 
     // Private fields
     // func: Option<Function>,             // Save the last Function analyzed
-    pub defmap: DefMap<'tcx, T>, // Map from variables to the operations that define them
-    pub usemap: UseMap<'tcx, T>, // Map from variables to operations where variables are used
-    pub symbmap: SymbMap<'tcx, T>, // Map from variables to operations where they appear as bounds
-    pub values_branchmap: ValuesBranchMap<'tcx, T>, // Store intervals, basic blocks, and branches
-    // values_switchmap: ValuesSwitchMap<'tcx, T>, // Store intervals for switch branches
+    pub defmap: DefMap<'a, T>, // Map from variables to the operations that define them
+    pub usemap: UseMap<'a, T>, // Map from variables to operations where variables are used
+    pub symbmap: SymbMap<'a, T>, // Map from variables to operations where they appear as bounds
+    pub values_branchmap: ValuesBranchMap<'a, T>, // Store intervals, basic blocks, and branches
+    // values_switchmap: ValuesSwitchMap<'a, T>, // Store intervals for switch branches
     constant_vector: Vec<T>, // Vector for constants from an SCC
 }
 
-impl<'tcx, T> ConstraintGraph<'tcx, T>
+impl<'a, T> ConstraintGraph<'a, T>
 where
     T: PartialOrd + Clone + Bounded + From<ScalarInt>,
 {
-    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+    pub fn new() -> Self {
         Self {
             vars: VarNodes::new(),
             oprs: GenOprs::new(),
@@ -41,10 +40,9 @@ where
             values_branchmap: ValuesBranchMap::new(),
             // values_switchmap: ValuesSwitchMap::new(),
             constant_vector: Vec::new(),
-            tcx: tcx,
         }
     }
-    //     fn create_random_place() -> Place<'tcx> {
+    //     fn create_random_place() -> Place<'a> {
     //     // 随机生成一个新的 Local 值
     //     let mut rng = rand::rng();
     //     let random_local = Local::from_usize(rng.random_range(0..100));
@@ -57,7 +55,7 @@ where
 
     //     place
     // }
-    pub fn create_random_place(tcx: TyCtxt<'tcx>) -> Place<'tcx> {
+    pub fn create_random_place() -> Place<'a> {
         // 随机生成一个新的 Local 值
         let mut rng = rand::rng();
         let random_local = Local::from_usize(rng.random_range(10000..1000000)); // 假设 Local 的范围是 0 到 99
@@ -68,7 +66,7 @@ where
             projection: ty::List::empty(),
         }
     }
-    pub fn add_varnode(&mut self, v: &'tcx Place<'tcx>) -> &VarNode<'tcx, T> {
+    pub fn add_varnode(&mut self, v: &'a Place<'a>) -> &VarNode<'a, T> {
         // 如果变量已存在，则直接返回
 
         // 插入新的 VarNode
@@ -107,7 +105,7 @@ where
     //     }
     //     graph
     // }
-    pub fn build_graph(&mut self, body: &'tcx Body<'tcx>) {
+    pub fn build_graph(&mut self, body: &'a Body<'a>) {
         self.build_value_maps(body);
         for block in body.basic_blocks.indices() {
             let block_data = &body[block];
@@ -117,12 +115,14 @@ where
             }
         }
     }
-    pub fn build_value_maps(&mut self, body: &'tcx Body<'tcx>) {
-        for (block_index, block) in body.basic_blocks.iter_enumerated() {
-            if let Some(terminator) = &block.terminator {
+
+    pub fn build_value_maps(&mut self, body: &'a Body<'a>) {
+        for bb in body.basic_blocks.indices() {
+            let block_data = &body[bb];
+            if let Some(terminator) = &block_data.terminator {
                 match &terminator.kind {
                     TerminatorKind::SwitchInt { discr, targets } => {
-                        self.build_value_branch_map(body, discr, targets, block);
+                        self.build_value_branch_map(body, discr, targets, block_data);
                     }
                     TerminatorKind::Goto { target } => {
                         // self.build_value_goto_map(block_index, *target);
@@ -140,12 +140,12 @@ where
 
     pub fn build_value_branch_map(
         &mut self,
-        body: &Body<'tcx>,
-        discr: &'tcx Operand<'tcx>,
-        targets: &'tcx SwitchTargets,
-        block: &'tcx BasicBlockData<'tcx>,
+        body: &Body<'a>,
+        discr: &'a Operand<'a>,
+        targets: &'a SwitchTargets,
+        block: &'a BasicBlockData<'a>,
     ) {
-        // let place1: &Place<'tcx>;
+        // let place1: &Place<'a>;
         // 确保分支条件是二元比较
         if let Operand::Copy(place) | Operand::Move(place) = discr {
             if let Some((op1, op2, cmp_op)) = self.extract_condition(place, block) {
@@ -156,7 +156,7 @@ where
                     (Some(c1), Some(c2)) => {}
                     (Some(c), None) | (None, Some(c)) => {
                         let const_in_left: bool;
-                        let variable: &Place<'tcx>;
+                        let variable: &Place<'a>;
                         if const_op1.is_some() {
                             const_in_left = true;
                             variable = match op2 {
@@ -238,9 +238,9 @@ where
 
     fn extract_condition(
         &self,
-        place: &'tcx Place<'tcx>,
-        block: &'tcx BasicBlockData<'tcx>,
-    ) -> Option<(&'tcx Operand<'tcx>, &'tcx Operand<'tcx>, BinOp)> {
+        place: &'a Place<'a>,
+        block: &'a BasicBlockData<'a>,
+    ) -> Option<(&'a Operand<'a>, &'a Operand<'a>, BinOp)> {
         for stmt in &block.statements {
             if let StatementKind::Assign(box (lhs, Rvalue::BinaryOp(bin_op, box (op1, op2)))) =
                 &stmt.kind
@@ -258,8 +258,8 @@ where
     }
     // pub fn calculate_ranges(
     //     &self,
-    //     op1: &Operand<'tcx>,
-    //     op2: &Operand<'tcx>,
+    //     op1: &Operand<'a>,
+    //     op2: &Operand<'a>,
     //     cmp_op: BinOp,
     // ) -> (Option<(i128, i128)>, Option<(i128, i128)>) {
     //     // 检查操作数是否为常量
@@ -362,7 +362,7 @@ where
             node.init(is_undefined);
         }
     }
-    pub fn build_operations(&mut self, inst: &'tcx Statement<'tcx>) {
+    pub fn build_operations(&mut self, inst: &'a Statement<'a>) {
         // Handle binary instructions
         if let StatementKind::Assign(box (place, rvalue)) = &inst.kind {
             match rvalue {
@@ -396,22 +396,22 @@ where
             }
         }
     }
-    fn add_unary_op(&mut self, stmt: &'tcx Statement<'tcx>) {
-        let rand_place: Place<'tcx> = Self::create_random_place(self.tcx);
+    fn add_unary_op(&mut self, stmt: &'a Statement<'a>) {
+        let rand_place: Place<'a> = Self::create_random_place();
         let stmt_varnode = self.add_varnode(Box::leak(Box::new(rand_place)));
     }
 
-    fn add_binary_op(&mut self, inst: &'tcx Statement<'tcx>) {
+    fn add_binary_op(&mut self, inst: &'a Statement<'a>) {
         // Implementation for adding binary operation
         // ...
     }
 
-    // fn add_phi_op(&mut self, phi: &'tcx PHINode<'tcx>) {
+    // fn add_phi_op(&mut self, phi: &'a PHINode<'a>) {
     //     // Implementation for adding phi operation
     //     // ...
     // }
 
-    // fn add_sigma_op(&mut self, phi: &'tcx PHINode<'tcx>) {
+    // fn add_sigma_op(&mut self, phi: &'a PHINode<'a>) {
     //     // Implementation for adding sigma operation
     //     // ...
     // }

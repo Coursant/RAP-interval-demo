@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, Write};
 
@@ -7,12 +8,15 @@ use rustc_middle::mir::pretty::{write_mir_fn, PrettyPrintMirOptions};
 use rustc_middle::mir::visit::Visitor;
 use rustc_middle::mir::visit::*;
 use rustc_middle::mir::visit::*;
+use rustc_middle::mir::visit::*;
+use rustc_middle::mir::*;
 use rustc_middle::mir::*;
 use rustc_middle::mir::{visit::MutVisitor, Body};
 use rustc_middle::ty::TyCtxt;
 use tracing::{debug, instrument};
 
 use super::Replacer::*;
+use crate::domain::ConstraintGraph::ConstraintGraph;
 use crate::SSA::ssa::SsaLocals;
 use crate::SSA::SSATransformer::SSATransformer;
 pub struct PassRunner<'tcx> {
@@ -23,12 +27,12 @@ impl<'tcx> PassRunner<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self { tcx }
     }
-    pub fn print_diff(&self, body: &mut Body<'tcx>) {
+    pub fn print_diff(&self, body: &Body<'tcx>) {
         let dir_path = "passrunner_mir";
         // PassRunner::new(self.tcx);
         // 动态生成文件路径
-        let mir_file_path = format!("{}/before_copy_prop_mir.txt", dir_path);
-        let phi_mir_file_path = format!("{}/after_copy_prop_mir.txt", dir_path);
+        let mir_file_path = format!("{}/origin_mir.txt", dir_path);
+        let phi_mir_file_path = format!("{}/after_rename_mir.txt", dir_path);
         let mut file = File::create(&mir_file_path).unwrap();
         let mut w = io::BufWriter::new(&mut file);
         write_mir_pretty(self.tcx, None, &mut w).unwrap();
@@ -66,31 +70,37 @@ impl<'tcx> PassRunner<'tcx> {
             borrowed_locals: ssa.borrowed_locals(),
             storage_to_remove,
             ssatransformer,
+            new_local_collection: HashSet::default(),
         };
         replacer.insert_phi_statment(body);
-
-        let param_env = self
-            .tcx
-            .param_env_reveal_all_normalized(body.source.def_id());
-        let ssa = SsaLocals::new(self.tcx, body, param_env);
-
-        let fully_moved = fully_moved_locals(&ssa, body);
-        debug!(?fully_moved);
-
-        let mut storage_to_remove = BitSet::new_empty(fully_moved.domain_size());
-        for (local, &head) in ssa.copy_classes().iter_enumerated() {
-            if local != head {
-                storage_to_remove.insert(head);
-            }
-        }
-
-        let any_replacement = ssa.copy_classes().iter_enumerated().any(|(l, &h)| l != h);
-        replacer.copy_classes = ssa.copy_classes();
-        replacer.fully_moved = fully_moved;
-        replacer.borrowed_locals = ssa.borrowed_locals();
-        replacer.storage_to_remove = storage_to_remove;
-
-        replacer.visit_body_preserves_cfg(body);
         replacer.rename_variables(body);
+        // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
+
+        // cg.build_graph(body);
+        // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(self.tcx);
+
+        // cg.build_graph(&body);
+        // let param_env = self
+        //     .tcx
+        //     .param_env_reveal_all_normalized(body.source.def_id());
+        // let ssa = SsaLocals::new(self.tcx, body, param_env);
+
+        // let fully_moved = fully_moved_locals(&ssa, body);
+        // debug!(?fully_moved);
+
+        // let mut storage_to_remove = BitSet::new_empty(fully_moved.domain_size());
+        // for (local, &head) in ssa.copy_classes().iter_enumerated() {
+        //     if local != head {
+        //         storage_to_remove.insert(head);
+        //     }
+        // }
+
+        // let any_replacement = ssa.copy_classes().iter_enumerated().any(|(l, &h)| l != h);
+        // replacer.copy_classes = ssa.copy_classes();
+        // replacer.fully_moved = fully_moved;
+        // replacer.borrowed_locals = ssa.borrowed_locals();
+        // replacer.storage_to_remove = storage_to_remove;
+
+        // // replacer.visit_body_preserves_cfg(body);
     }
 }

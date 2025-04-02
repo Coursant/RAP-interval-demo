@@ -1,3 +1,10 @@
+// fn main() {
+//     let mut x = 0;
+
+//     while x < 10 {
+//         x += 1;
+//     }
+// }
 fn main() {
     let mut k = 0;
 
@@ -13,6 +20,21 @@ fn main() {
         k += 1;
     }
 }
+// fn main() {
+//     let mut k = 0;
+
+//     while k < 100 {
+//         let mut i = 0;
+//         let mut j = k;
+
+//         while i < j {
+//             i += 1;
+//             j -= 1;
+//         }
+
+//         k += 1;
+//     }
+// }
 // fn main() -> () {
 //     let mut _0: ();
 //     let mut _1: i32;

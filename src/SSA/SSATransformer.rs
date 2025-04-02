@@ -23,59 +23,6 @@ use tracing::{debug, error, info, warn};
 
 use rustc_data_structures::fx::FxHashMap;
 
-// impl<'tcx> SSAContext {}
-
-// pub struct SSAtransform<'tcx> {
-//     /// 保存每个变量的当前版本
-//     version_map: IndexVec<Local, usize>,
-//     /// 保存每个基本块的前驱块信息
-//     phi_inserts: IndexVec<BasicBlock, Vec<(Local, Vec<Operand<'tcx>>)>>,
-// }
-
-// impl<'tcx> SSAtransform<'tcx> {
-//     /// 创建一个新的 `SSAtransform` 实例
-//     pub fn new(body: &Body<'tcx>) -> Self {
-//         Self {
-//             version_map: IndexVec::from_elem(0, &body.local_decls),
-//             phi_inserts: IndexVec::from_elem(Vec::new(), &body.basic_blocks),
-//         }
-//     }
-
-//     /// 执行 SSA 转换
-//     pub fn apply(&mut self, tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
-//         self.collect_versions_and_phi_places(body);
-//         self.insert_phi_functions(body);
-//     }
-
-//     /// 收集变量版本和需要插入 Phi 函数的位置
-//     fn collect_versions_and_phi_places(&mut self, body: &Body<'tcx>) {
-//         for (bb_idx, bb) in body.basic_blocks.iter_enumerated() {
-//             for stmt in &bb.statements {
-//                 if let StatementKind::Assign(box (place, _)) = &stmt.kind {
-//                     if let Some(local) = place.as_local() {
-//                         // 更新变量版本
-//                         self.version_map[local] += 1;
-//                     }
-//                 }
-//             }
-
-//             // if let Some(terminator) = &bb.terminator {
-//             //     for &target in terminator.successors() {
-//             //         for local in self.version_map.indices() {
-//             //             // 收集需要在目标块插入的变量值
-//             //             let current_operand = Operand::Copy(
-//             //                 // Place::from(local).with_field(None, self.version_map[local]),
-//             //             );
-//             //             self.phi_inserts[target].push((local, vec![current_operand]));
-//             //         }
-//             //     }
-//             // }
-//         }
-//     }
-
-//     /// 插入 Phi 函数到每个目标块的头部
-
-// }
 use rustc_index::bit_set::BitSet;
 use rustc_index::IndexSlice;
 use rustc_middle::mir::visit::*;
@@ -96,6 +43,8 @@ pub struct SSATransformer<'tcx> {
     pub reaching_def: HashMap<Local, Option<Local>>,
     pub local_index: u32,
     pub local_defination_block: HashMap<Local, BasicBlock>,
+    pub skipped: HashSet<u32>,
+    pub phi_index: HashMap<*const Statement<'tcx>, usize>,
 }
 
 impl<'tcx> SSATransformer<'tcx> {
@@ -115,6 +64,11 @@ impl<'tcx> SSATransformer<'tcx> {
             Self::map_locals_to_assign_blocks(&body);
         let local_defination_block: HashMap<Local, BasicBlock> =
             Self::map_locals_to_definition_block(&body);
+        let len = body.local_decls.len() as u32;
+        let mut skipped = HashSet::new();
+        if len > 0 {
+            skipped.extend(1..len + 1);
+        }
         SSATransformer {
             tcx,
             def_id,
@@ -125,8 +79,10 @@ impl<'tcx> SSATransformer<'tcx> {
             df,
             local_assign_blocks,
             reaching_def: HashMap::default(),
-            local_index: body.local_decls.len() as u32,
+            local_index: len as u32,
             local_defination_block: local_defination_block,
+            skipped: skipped,
+            phi_index: HashMap::default(),
         }
     }
 
@@ -186,8 +142,36 @@ impl<'tcx> SSATransformer<'tcx> {
 
         local_to_block_map
     }
+    pub fn depth_first_search_preorder(
+        dom_tree: &HashMap<BasicBlock, Vec<BasicBlock>>,
+        root: BasicBlock,
+    ) -> Vec<BasicBlock> {
+        let mut visited: HashSet<BasicBlock> = HashSet::new();
+        let mut preorder = Vec::new();
+
+        fn dfs(
+            node: BasicBlock,
+            dom_tree: &HashMap<BasicBlock, Vec<BasicBlock>>,
+            visited: &mut HashSet<BasicBlock>,
+            preorder: &mut Vec<BasicBlock>,
+        ) {
+            if visited.insert(node) {
+                preorder.push(node); // 先访问当前节点（前序遍历）
+
+                if let Some(children) = dom_tree.get(&node) {
+                    for &child in children {
+                        dfs(child, dom_tree, visited, preorder);
+                    }
+                }
+            }
+        }
+
+        dfs(root, dom_tree, &mut visited, &mut preorder);
+        preorder
+    }
     pub fn depth_first_search_postorder(
         dom_tree: &HashMap<BasicBlock, Vec<BasicBlock>>,
+        root: &BasicBlock,
     ) -> Vec<BasicBlock> {
         let mut visited: HashSet<BasicBlock> = HashSet::new();
         let mut postorder = Vec::new();
@@ -199,24 +183,19 @@ impl<'tcx> SSATransformer<'tcx> {
             postorder: &mut Vec<BasicBlock>,
         ) {
             if visited.insert(node) {
-                // 遍历当前节点的子节点
                 if let Some(children) = dom_tree.get(&node) {
                     for &child in children {
                         dfs(child, dom_tree, visited, postorder);
                     }
                 }
-                // 当前节点访问结束，加入后序结果
                 postorder.push(node);
             }
         }
 
-        // 开始从支配树的任意一个根节点进行 DFS
-        if let Some(&start_node) = dom_tree.keys().next() {
-            dfs(start_node, dom_tree, &mut visited, &mut postorder);
-        }
-
+        dfs(*root, dom_tree, &mut visited, &mut postorder);
         postorder
     }
+
     fn map_locals_to_assign_blocks(body: &Body) -> HashMap<Local, HashSet<BasicBlock>> {
         let mut local_to_blocks: HashMap<Local, HashSet<BasicBlock>> = HashMap::new();
 
