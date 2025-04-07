@@ -1,24 +1,25 @@
+use std::collections::HashMap;
+#[allow(unused)]
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{self, Write};
-
-use rustc_index::bit_set::BitSet;
-use rustc_index::IndexSlice;
+use std::io::{self, Cursor};
 use rustc_middle::mir::pretty::{write_mir_fn, PrettyPrintMirOptions};
-use rustc_middle::mir::visit::Visitor;
-use rustc_middle::mir::visit::*;
-use rustc_middle::mir::visit::*;
-use rustc_middle::mir::visit::*;
+// use std::fs::File;
+// use std::io::{self, Write};
+// use rustc_index::bit_set::BitSet;
+// use rustc_index::IndexSlice;
+// use rustc_middle::mir::visit::Visitor;
+// use rustc_middle::mir::visit::*;
+// use rustc_middle::mir::visit::*;
+// use rustc_middle::mir::visit::*;
 use rustc_middle::mir::*;
-use rustc_middle::mir::*;
-use rustc_middle::mir::{visit::MutVisitor, Body};
+// use rustc_middle::mir::{visit::MutVisitor, Body};
 use rustc_middle::ty::TyCtxt;
-use tracing::{debug, instrument};
+
+// use crate::domain::ConstraintGraph::ConstraintGraph;
+use super::SSATransformer::SSATransformer;
 
 use super::Replacer::*;
-use crate::domain::ConstraintGraph::ConstraintGraph;
-use crate::SSA::ssa::SsaLocals;
-use crate::SSA::SSATransformer::SSATransformer;
 pub struct PassRunner<'tcx> {
     tcx: TyCtxt<'tcx>,
 }
@@ -30,7 +31,6 @@ impl<'tcx> PassRunner<'tcx> {
     pub fn print_diff(&self, body: &Body<'tcx>) {
         let dir_path = "passrunner_mir";
         // PassRunner::new(self.tcx);
-        // 动态生成文件路径
         let mir_file_path = format!("{}/origin_mir.txt", dir_path);
         let phi_mir_file_path = format!("{}/after_rename_mir.txt", dir_path);
         let mut file = File::create(&mir_file_path).unwrap();
@@ -41,66 +41,55 @@ impl<'tcx> PassRunner<'tcx> {
         let options = PrettyPrintMirOptions::from_cli(self.tcx);
         write_mir_fn(self.tcx, body, &mut |_, _| Ok(()), &mut w2, options).unwrap();
     }
+    pub fn get_final_ssa_as_string(&self, body: &Body<'tcx>) -> String {
+        // origin_mir
+        // let mut buffer1 = Cursor::new(Vec::new());
+        // write_mir_pretty(self.tcx, None, &mut buffer1).unwrap();
+        // let origin_mir = String::from_utf8(buffer1.into_inner()).unwrap();
+    
+        // after_rename_mir
+        let mut buffer2 = Cursor::new(Vec::new());
+        let options = PrettyPrintMirOptions::from_cli(self.tcx);
+        write_mir_fn(self.tcx, body, &mut |_, _| Ok(()), &mut buffer2, options).unwrap();
+        let after_mir = String::from_utf8(buffer2.into_inner()).unwrap();
+        after_mir
+    }
+    // pub fn lvalue_check(mir_string: &str) -> bool {
+    //     let re = regex::Regex::new(r"_(\d+)\s*=").unwrap();
+    //     let mut counts = HashMap::new();
+    //     let mut has_duplicate = false;
+    
+    //     for cap in re.captures_iter(mir_string) {
+    //         let var = cap[1].parse::<u32>().unwrap();
+    //         let counter = counts.entry(var).or_insert(0);
+    //         *counter += 1;
+    //         if *counter > 1 {
+    //             has_duplicate = true;
+    //         }
+    //     }
+    
+    //     for (var, count) in counts {
+    //         if count > 1 {
+    //             // rap_warn!("Variable _{} is used {} times", var, count);
+    //         }
+    //     }
+    
+    //     !has_duplicate  
+    // }
     pub fn run_pass(&self, body: &mut Body<'tcx>) {
-        debug!(def_id = ?body.source.def_id());
-
-        let param_env = self
-            .tcx
-            .param_env_reveal_all_normalized(body.source.def_id());
-        let ssa = SsaLocals::new(self.tcx, body, param_env);
-
-        let fully_moved = fully_moved_locals(&ssa, body);
-        debug!(?fully_moved);
-
-        let mut storage_to_remove = BitSet::new_empty(fully_moved.domain_size());
-        for (local, &head) in ssa.copy_classes().iter_enumerated() {
-            if local != head {
-                storage_to_remove.insert(head);
-            }
-        }
-
-        let any_replacement = ssa.copy_classes().iter_enumerated().any(|(l, &h)| l != h);
-
         let ssatransformer =
             SSATransformer::new(self.tcx, body, body.source.def_id().expect_local());
         let mut replacer = Replacer {
             tcx: self.tcx,
-            copy_classes: ssa.copy_classes(),
-            fully_moved,
-            borrowed_locals: ssa.borrowed_locals(),
-            storage_to_remove,
+
             ssatransformer,
             new_local_collection: HashSet::default(),
         };
         replacer.insert_phi_statment(body);
+        replacer.insert_essa_statement(body);
         replacer.rename_variables(body);
-        // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
+        let essa_mir_string = self.get_final_ssa_as_string(body);
 
-        // cg.build_graph(body);
-        // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(self.tcx);
 
-        // cg.build_graph(&body);
-        // let param_env = self
-        //     .tcx
-        //     .param_env_reveal_all_normalized(body.source.def_id());
-        // let ssa = SsaLocals::new(self.tcx, body, param_env);
-
-        // let fully_moved = fully_moved_locals(&ssa, body);
-        // debug!(?fully_moved);
-
-        // let mut storage_to_remove = BitSet::new_empty(fully_moved.domain_size());
-        // for (local, &head) in ssa.copy_classes().iter_enumerated() {
-        //     if local != head {
-        //         storage_to_remove.insert(head);
-        //     }
-        // }
-
-        // let any_replacement = ssa.copy_classes().iter_enumerated().any(|(l, &h)| l != h);
-        // replacer.copy_classes = ssa.copy_classes();
-        // replacer.fully_moved = fully_moved;
-        // replacer.borrowed_locals = ssa.borrowed_locals();
-        // replacer.storage_to_remove = storage_to_remove;
-
-        // // replacer.visit_body_preserves_cfg(body);
     }
 }
