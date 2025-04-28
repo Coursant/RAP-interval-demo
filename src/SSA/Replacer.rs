@@ -2,11 +2,11 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
-use rustc_index:: IndexVec;
-use rustc_middle::mir::*;
-use rustc_middle::ty::TyCtxt;
-use std::collections::{HashMap, HashSet, VecDeque};
 use super::SSATransformer::SSATransformer;
+use rustc_index::IndexVec;
+use rustc_middle::ty::TyCtxt;
+use rustc_middle::{mir::*, ty::GenericArgs};
+use std::collections::{HashMap, HashSet, VecDeque};
 // use stable_mir::mir::FieldIdx;
 // use stable_mir::ty::ConstantKind;
 // // use rustc_middle::mir::visit::*;
@@ -65,6 +65,19 @@ impl<'tcx> Replacer<'tcx> {
                 for _ in 0..predecessors.len() {
                     operands.push(Operand::Copy(Place::from(var)));
                 }
+                // let phi_stmt = Statement {
+                //     source_info: SourceInfo::outermost(body.span),
+                //     kind: StatementKind::Assign(Box::new((
+                //         Place::from(var),
+                //         Rvalue::Aggregate(Box::new(
+                //             AggregateKind::Adt(self.ssatransformer.phi_def_id.clone(),
+                //             rustc_target::abi::VariantIdx::from_u32(0),
+                //         GenericArgs::empty(),
+                //         None,
+                //         None))
+                //         , operands),
+                //     ))),
+                // };
                 let phi_stmt = Statement {
                     source_info: SourceInfo::outermost(body.span),
                     kind: StatementKind::Assign(Box::new((
@@ -72,7 +85,6 @@ impl<'tcx> Replacer<'tcx> {
                         Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operands),
                     ))),
                 };
-
                 body.basic_blocks_mut()[block]
                     .statements
                     .insert(0, phi_stmt);

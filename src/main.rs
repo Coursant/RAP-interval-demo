@@ -67,34 +67,19 @@ use RAP_interval_demo::SSA::{PassRunner::*, SSATransformer::*};
 fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
     // let mir_built = tcx.mir_built(def_id);
     // let body = mir_built.borrow();
-    let  body_ = tcx.optimized_mir(def_id);
-    // let mut body_steal  = tcx.mir_promoted(def_id).0.steal();s
-    let mut body = tcx.optimized_mir(def_id).clone();
-    //不许存储body的可变引用
-    let body_mut_ref = &mut body;
-    let passrunner = PassRunner::new(tcx);
-    passrunner.run_pass(body_mut_ref);
-    passrunner.print_diff(body_mut_ref);
+    // let mut body_steal  = tcx.mir_promoted(def_id).0.steal();
 
-    // let body_clone :Body<'a>=body_mut_ref.clone();
+    let body_tcx = tcx.optimized_mir(def_id);
+    let mut body_mut = tcx.optimized_mir(def_id).clone();
+    let passrunner = PassRunner::new(tcx);
+    passrunner.run_pass(&mut body_mut);
+    passrunner.print_diff(&body_mut);
 
     let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
 
-    cg.build_graph(&body_);
-
-    // let mut ssa: SSATransformer<'tcx> = SSATransformer::new(tcx, def_id);
-    // ssa.insert_phi_statment(body_mut_ref);
-    // ssa.analyze();
-    // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(tcx);
-    // println!("{:?}", cg.vars);
-
-    // let p =
-    //     RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph::<'tcx, u32>::create_random_place(
-    //         tcx,
-    //     );
-    // println!("{:?}", p);
-
-    // // cg.build_graph(&body);
+    cg.build_graph(&body_tcx);
+    // cg.build_graph(&body_mut);
+    // !bug  
 }
 
 struct MyDataflowCallbacks;

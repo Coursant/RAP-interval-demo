@@ -102,8 +102,8 @@ pub trait Operation<T: PartialOrd + Clone + Bounded> {
 // Define the BasicOp struct
 pub struct BasicOp<'tcx, T: PartialOrd + Clone + Bounded> {
     pub intersect: &'tcx mut BasicInterval<T>, // The range associated with the operation
-    pub sink: &'tcx mut VarNode<'tcx, T>,        // The target node storing the result
-    pub inst: &'tcx Statement<'tcx>,             // The instruction that originated this operation
+    pub sink: &'tcx mut VarNode<'tcx, T>,      // The target node storing the result
+    pub inst: &'tcx Statement<'tcx>,           // The instruction that originated this operation
 }
 
 impl<'tcx, T: PartialOrd + Clone + Bounded> BasicOp<'tcx, T> {
@@ -233,7 +233,7 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> VarNode<'tcx, T> {
 }
 #[derive(Debug)]
 pub struct ValueBranchMap<'tcx, T: PartialOrd + Clone + Bounded> {
-    v: &'tcx Place<'tcx>,           // The value associated with the branch
+    v: &'tcx Place<'tcx>,         // The value associated with the branch
     bb_true: &'tcx BasicBlock,    // True side of the branch
     bb_false: &'tcx BasicBlock,   // False side of the branch
     itv_t: IntervalType<'tcx, T>, // Interval for the true side
