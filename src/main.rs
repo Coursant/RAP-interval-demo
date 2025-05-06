@@ -64,6 +64,19 @@ use tracing::{debug, error, info, warn};
 use RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph;
 use RAP_interval_demo::SSA::{PassRunner::*, SSATransformer::*};
 
+
+pub struct MyVisitor<'tcx> {
+    body_test: HashMap<LocalDefId, Option<bool>>,
+    body:  &'tcx Body<'tcx>,
+}
+
+impl<'tcx> MyVisitor<'tcx> {
+pub fn new(body:  &'tcx Body<'tcx>, def_id: LocalDefId) -> MyVisitor<'tcx> {
+    let mut body_test = HashMap::new();
+    body_test.insert(def_id, None); // 或 Some(true)/Some(false)
+    MyVisitor { body_test, body }
+}}
+
 fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
     // let mir_built = tcx.mir_built(def_id);
     // let body = mir_built.borrow();
@@ -80,6 +93,20 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
     cg.build_graph(&body_tcx);
     // cg.build_graph(&body_mut);
     // !bug  
+    let mut body = tcx.optimized_mir(def_id).clone();
+    {
+        let body_mut_ref: &mut Body<'tcx> = unsafe {
+            // 强制转换为更长的生命周期
+            &mut *(&mut body as *mut Body<'tcx>)
+        };        
+        let passrunner = PassRunner::new(tcx);
+        passrunner.run_pass(body_mut_ref);
+        passrunner.print_diff(body_mut_ref);
+
+        let mut visitor = MyVisitor::new(body_mut_ref, def_id);
+        let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
+        cg.build_graph(body_mut_ref);
+    }
 }
 
 struct MyDataflowCallbacks;
@@ -120,5 +147,3 @@ fn main() {
         .run()
         .unwrap();
 }
-
-// ...existing code...

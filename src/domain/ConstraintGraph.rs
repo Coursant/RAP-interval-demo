@@ -10,12 +10,11 @@ use rustc_mir_transform::*;
 use rustc_span::sym::var;
 
 use std::collections::{HashMap, HashSet};
-pub struct ConstraintGraph<'tcx, T: PartialOrd + Clone + Bounded> {
+pub struct  ConstraintGraph<'tcx, T: PartialOrd + Clone + Bounded> {
     // Protected fields
     pub vars: VarNodes<'tcx, T>, // The variables of the source program
     pub oprs: GenOprs<'tcx, T>,  // The operations of the source program
 
-    // Private fields
     // func: Option<Function>,             // Save the last Function analyzed
     pub defmap: DefMap<'tcx, T>, // Map from variables to the operations that define them
     pub usemap: UseMap<'tcx, T>, // Map from variables to operations where variables are used
@@ -107,6 +106,7 @@ where
     // }
     pub fn build_graph(&mut self, body: &'tcx Body<'tcx>) {
         self.build_value_maps(body);
+        print!("Building graph...\n");
         for block in body.basic_blocks.indices() {
             let block_data = &body[block];
             // Traverse statements
