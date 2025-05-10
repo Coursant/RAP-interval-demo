@@ -65,26 +65,29 @@ impl<'tcx> Replacer<'tcx> {
                 for _ in 0..predecessors.len() {
                     operands.push(Operand::Copy(Place::from(var)));
                 }
-                // let phi_stmt = Statement {
-                //     source_info: SourceInfo::outermost(body.span),
-                //     kind: StatementKind::Assign(Box::new((
-                //         Place::from(var),
-                //         Rvalue::Aggregate(Box::new(
-                //             AggregateKind::Adt(self.ssatransformer.phi_def_id.clone(),
-                //             rustc_target::abi::VariantIdx::from_u32(0),
-                //         GenericArgs::empty(),
-                //         None,
-                //         None))
-                //         , operands),
-                //     ))),
-                // };
                 let phi_stmt = Statement {
                     source_info: SourceInfo::outermost(body.span),
                     kind: StatementKind::Assign(Box::new((
                         Place::from(var),
-                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operands),
+                        Rvalue::Aggregate(
+                            Box::new(AggregateKind::Adt(
+                                self.ssatransformer.phi_def_id.clone(),
+                                rustc_target::abi::VariantIdx::from_u32(0),
+                                GenericArgs::empty(),
+                                None,
+                                None,
+                            )),
+                            operands,
+                        ),
                     ))),
                 };
+                // let phi_stmt = Statement {
+                //     source_info: SourceInfo::outermost(body.span),
+                //     kind: StatementKind::Assign(Box::new((
+                //         Place::from(var),
+                //         Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operands),
+                //     ))),
+                // };
                 body.basic_blocks_mut()[block]
                     .statements
                     .insert(0, phi_stmt);
@@ -232,6 +235,13 @@ impl<'tcx> Replacer<'tcx> {
                                 Operand::Copy(p1) | Operand::Move(p1),
                                 Operand::Copy(p2) | Operand::Move(p2),
                             ) => {
+                                let ADT = AggregateKind::Adt(
+                                    self.ssatransformer.essa_def_id.clone(),
+                                    rustc_target::abi::VariantIdx::from_u32(0),
+                                    GenericArgs::empty(),
+                                    None,
+                                    None,
+                                );
                                 let place1 = Place::from(p1);
                                 let place2 = Place::from(p2);
                                 let rvalue1;
@@ -249,10 +259,12 @@ impl<'tcx> Replacer<'tcx> {
                                     operand2.push(Operand::Copy(Place::from(p1)));
                                     operand2.push(cmp_operand.clone());
                                     operand2.push(magic_number_operand.clone());
-                                    rvalue1 =
-                                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand1);
-                                    rvalue2 =
-                                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand2);
+                                    //     rvalue1 =
+                                    //     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand1);
+                                    // rvalue2 =
+                                    //     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand2);
+                                    rvalue1 = Rvalue::Aggregate(Box::new(ADT.clone()), operand1);
+                                    rvalue2 = Rvalue::Aggregate(Box::new(ADT.clone()), operand2);
                                 } else {
                                     operand1.push(Operand::Copy(Place::from(p1)));
                                     operand1.push(Operand::Copy(Place::from(p2)));
@@ -263,10 +275,12 @@ impl<'tcx> Replacer<'tcx> {
                                     operand2.push(Operand::Copy(Place::from(p1)));
                                     operand2.push(flip_cmp_operand.clone());
                                     operand2.push(magic_number_operand.clone());
-                                    rvalue1 =
-                                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand1);
-                                    rvalue2 =
-                                        Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand2);
+                                    // rvalue1 =
+                                    //     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand1);
+                                    // rvalue2 =
+                                    //     Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand2);
+                                    rvalue1 = Rvalue::Aggregate(Box::new(ADT.clone()), operand1);
+                                    rvalue2 = Rvalue::Aggregate(Box::new(ADT.clone()), operand2);
                                 }
 
                                 let assign_stmt1 = Statement {
@@ -303,7 +317,14 @@ impl<'tcx> Replacer<'tcx> {
                         } else {
                             operand.push(cmp_operand.clone());
                         }
-                        rvalue = Rvalue::Aggregate(Box::new(AggregateKind::Tuple), operand);
+                        let ADT = AggregateKind::Adt(
+                            self.ssatransformer.essa_def_id.clone(),
+                            rustc_target::abi::VariantIdx::from_u32(0),
+                            GenericArgs::empty(),
+                            None,
+                            None,
+                        );
+                        rvalue = Rvalue::Aggregate(Box::new(ADT.clone()), operand);
                         let assign_stmt = Statement {
                             source_info: SourceInfo::outermost(body.span),
                             kind: StatementKind::Assign(Box::new((place, rvalue))),

@@ -4,7 +4,15 @@
 //     while x < 10 {
 //         x += 1;
 //     }
+
 // }
+pub struct SSAstmt;
+pub struct ESSAstmt;
+
+#[used]
+static _SSAstmt: Option<SSAstmt> = None;
+static _ESSAstmt: Option<ESSAstmt> = None;
+
 fn main() {
     let mut k = 0;
 

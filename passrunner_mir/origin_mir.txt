@@ -1,5 +1,23 @@
 // WARNING: This output format is intended for human consumers only
 // and is subject to change without notice. Knock yourself out.
+static _SSAstmt: std::option::Option<SSAstmt> = {
+    let mut _0: std::option::Option<SSAstmt>;
+
+    bb0: {
+        _0 = std::option::Option::<SSAstmt>::None;
+        return;
+    }
+}
+
+static _ESSAstmt: std::option::Option<ESSAstmt> = {
+    let mut _0: std::option::Option<ESSAstmt>;
+
+    bb0: {
+        _0 = std::option::Option::<ESSAstmt>::None;
+        return;
+    }
+}
+
 fn main() -> () {
     let mut _0: ();
     let mut _1: i32;

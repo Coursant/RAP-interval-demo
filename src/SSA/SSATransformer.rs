@@ -29,7 +29,6 @@ use std::collections::{HashMap, HashSet};
 pub struct PhiPlaceholder;
 pub struct SSATransformer<'tcx> {
     pub tcx: TyCtxt<'tcx>,
-    pub def_id: LocalDefId,
     pub body: Body<'tcx>,
     pub cfg: HashMap<BasicBlock, Vec<BasicBlock>>,
     pub dominators: Dominators<BasicBlock>,
@@ -44,6 +43,7 @@ pub struct SSATransformer<'tcx> {
     pub phi_statements: HashMap<*const Statement<'tcx>, bool>,
     pub essa_statements: HashMap<*const Statement<'tcx>, bool>,
     pub phi_def_id: DefId,
+    pub essa_def_id: DefId,
 }
 
 impl<'tcx> SSATransformer<'tcx> {
@@ -71,7 +71,12 @@ impl<'tcx> SSATransformer<'tcx> {
         print!("Phid\n");
         return Some(root_def_id);
     }
-    pub fn new(tcx: TyCtxt<'tcx>, body: &Body<'tcx>, def_id: LocalDefId) -> Self {
+    pub fn new(
+        tcx: TyCtxt<'tcx>,
+        body: &Body<'tcx>,
+        ssa_def_id: DefId,
+        essa_def_id: DefId,
+    ) -> Self {
         let cfg: HashMap<BasicBlock, Vec<BasicBlock>> = Self::extract_cfg_from_predecessors(&body);
 
         let dominators: Dominators<BasicBlock> = body.basic_blocks.dominators().clone();
@@ -108,7 +113,6 @@ impl<'tcx> SSATransformer<'tcx> {
 
         SSATransformer {
             tcx,
-            def_id,
             body: body.clone(),
             cfg,
             dominators,
@@ -122,8 +126,8 @@ impl<'tcx> SSATransformer<'tcx> {
             phi_index: HashMap::default(),
             phi_statements: HashMap::default(),
             essa_statements: HashMap::default(),
-            phi_def_id: def_id.to_def_id(),
-            // phi_defid: Self::find_phi_placeholder(tcx, "RAP-interval-demo").unwrap(),
+            phi_def_id: ssa_def_id,
+            essa_def_id: essa_def_id,
         }
     }
 

@@ -10,7 +10,7 @@ use rustc_mir_transform::*;
 use rustc_span::sym::var;
 
 use std::collections::{HashMap, HashSet};
-pub struct  ConstraintGraph<'tcx, T: PartialOrd + Clone + Bounded> {
+pub struct ConstraintGraph<'tcx, T: PartialOrd + Clone + Bounded> {
     // Protected fields
     pub vars: VarNodes<'tcx, T>, // The variables of the source program
     pub oprs: GenOprs<'tcx, T>,  // The operations of the source program

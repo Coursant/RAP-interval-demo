@@ -1,7 +1,9 @@
+use rustc_hir::def_id::DefId;
+#[allow(unused)]
 use rustc_middle::mir::pretty::{write_mir_fn, PrettyPrintMirOptions};
 use std::collections::HashMap;
-#[allow(unused)]
 use std::collections::HashSet;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Cursor};
 // use std::fs::File;
@@ -14,8 +16,8 @@ use std::io::{self, Cursor};
 // use rustc_middle::mir::visit::*;
 use rustc_middle::mir::*;
 // use rustc_middle::mir::{visit::MutVisitor, Body};
+use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
-
 // use crate::domain::ConstraintGraph::ConstraintGraph;
 use super::SSATransformer::SSATransformer;
 
@@ -76,12 +78,10 @@ impl<'tcx> PassRunner<'tcx> {
 
     //     !has_duplicate
     // }
-    pub fn run_pass(&self, body: &mut Body<'tcx>) {
-        let ssatransformer =
-            SSATransformer::new(self.tcx, body, body.source.def_id().expect_local());
+    pub fn run_pass(&self, body: &mut Body<'tcx>, ssa_def_id: DefId, essa_def_id: DefId) {
+        let ssatransformer = SSATransformer::new(self.tcx, body, ssa_def_id, essa_def_id);
         let mut replacer = Replacer {
             tcx: self.tcx,
-
             ssatransformer,
             new_local_collection: HashSet::default(),
         };

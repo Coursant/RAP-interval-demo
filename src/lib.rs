@@ -33,7 +33,7 @@ extern crate rustc_mir_transform;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
+extern crate stable_mir;
 extern crate tracing;
-
 pub mod SSA;
 pub mod domain;
