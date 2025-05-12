@@ -1,10 +1,10 @@
+use super::range::Range;
 use num_traits::Bounded;
 use rustc_middle::mir::{BasicBlock, Local, LocalDecl, Place, Statement};
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-
-use super::range::Range;
+use std::hash::Hash;
 
 #[derive(Debug)]
 pub enum IntervalType<'tcx, T: PartialOrd + Clone + Bounded> {
@@ -18,12 +18,12 @@ trait BasicIntervalTrait<T: PartialOrd + Clone + Bounded> {
     fn set_range(&mut self, new_range: Range<T>);
 }
 
-#[derive(Debug, Clone)]
-pub struct BasicInterval<T: PartialOrd + Clone> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct BasicInterval<T: PartialOrd + Clone + Bounded> {
     range: Range<T>,
 }
 
-impl<T: PartialOrd + Clone> BasicInterval<T> {
+impl<T: PartialOrd + Clone + Bounded> BasicInterval<T> {
     pub fn new(range: Range<T>) -> Self {
         Self { range }
     }
@@ -99,18 +99,18 @@ pub trait Operation<T: PartialOrd + Clone + Bounded> {
     fn print(&self, os: &mut dyn fmt::Write);
 }
 
-// Define the BasicOp struct
+#[derive(Debug, Clone)]
 pub struct BasicOp<'tcx, T: PartialOrd + Clone + Bounded> {
-    pub intersect: &'tcx mut BasicInterval<T>, // The range associated with the operation
-    pub sink: &'tcx mut VarNode<'tcx, T>,      // The target node storing the result
-    pub inst: &'tcx Statement<'tcx>,           // The instruction that originated this operation
+    pub intersect: BasicInterval<T>,
+    pub sink: Place<'tcx>,
+    pub inst: &'tcx Statement<'tcx>,
 }
 
 impl<'tcx, T: PartialOrd + Clone + Bounded> BasicOp<'tcx, T> {
     // Constructor for creating a new BasicOp
     pub fn new(
-        intersect: &'tcx mut BasicInterval<T>,
-        sink: &'tcx mut VarNode<'tcx, T>,
+        intersect: BasicInterval<T>,
+        sink: Place<'tcx>,
         inst: &'tcx Statement<'tcx>,
     ) -> Self {
         BasicOp {
@@ -130,15 +130,12 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> BasicOp<'tcx, T> {
         self.intersect.set_range(new_intersect);
     }
 
-    pub fn get_sink(&self) -> &VarNode<'tcx, T> {
+    pub fn get_sink(&self) -> Place<'tcx> {
         self.sink
     }
     // Returns the instruction that originated this operation
 
     // Returns the target of the operation (sink), mutable version
-    pub fn get_sink_mut(&mut self) -> &mut VarNode<'tcx, T> {
-        &mut self.sink
-    }
 }
 
 // Implement the Operation trait for BasicOp
@@ -149,7 +146,7 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> Operation<T> for BasicOp<'tcx, T> {
 
     fn eval(&self) -> Range<T> {
         // Placeholder for evaluating the range
-        Range::default() // Assuming Range<T> implements Default
+        Range::default(T::min_value()) // Assuming Range<T> implements Default
     }
 
     fn print(&self, os: &mut dyn fmt::Write) {}
@@ -158,17 +155,17 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> Operation<T> for BasicOp<'tcx, T> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct VarNode<'tcx, T: PartialOrd + Clone + Bounded> {
     // The program variable which is represented.
-    v: &'tcx Place<'tcx>,
+    v: Place<'tcx>,
     // A Range associated to the variable.
     interval: Range<T>,
     // Used by the crop meet operator.
     abstract_state: char,
 }
 impl<'tcx, T: PartialOrd + Clone + Bounded> VarNode<'tcx, T> {
-    pub fn new(v: &'tcx Place<'tcx>) -> Self {
+    pub fn new(v: Place<'tcx>) -> Self {
         Self {
             v,
-            interval: Range::default(),
+            interval: Range::default(T::min_value()),
             abstract_state: '?',
         }
     }
@@ -202,8 +199,8 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> VarNode<'tcx, T> {
     }
 
     /// Returns the variable represented by this node.
-    pub fn get_value(&self) -> &Place<'tcx> {
-        &self.v
+    pub fn get_value(&self) -> Place<'tcx> {
+        self.v.clone()
     }
 
     /// Changes the status of the variable represented by this node.
@@ -300,15 +297,18 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> ValueBranchMap<'tcx, T> {
 //     Statement( Statement<'tcx>),
 //     Place(Place<'tcx>),
 // }
-
-pub type VarNodes<'tcx, T> = HashMap<&'tcx Place<'tcx>, VarNode<'tcx, T>>;
-// pub type VarNodes<'tcx, T> = HashMap<&'tcx  Place<'tcx>, VarNode<'tcx,  T>>;
-
-pub type GenOprs<'tcx, T> = HashSet<&'tcx BasicOp<'tcx, T>>;
-pub type UseMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, HashSet<&'tcx BasicOp<'tcx, T>>>;
-pub type SymbMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, HashSet<&'tcx BasicOp<'tcx, T>>>;
-pub type DefMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, &'tcx BasicOp<'tcx, T>>;
+pub type VarNodes<'tcx, T> = HashMap<Place<'tcx>, VarNode<'tcx, T>>;
+pub type GenOprs<'tcx, T> = Vec<BasicOp<'tcx, T>>;
+pub type UseMap<'tcx> = HashMap<Place<'tcx>, Vec<usize>>;
+pub type SymbMap<'tcx> = HashMap<Place<'tcx>, Vec<usize>>;
+pub type DefMap<'tcx> = HashMap<Place<'tcx>, usize>;
 pub type ValuesBranchMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, ValueBranchMap<'tcx, T>>;
+// pub type VarNodes<'tcx, T> = HashMap<&'tcx Place<'tcx>, VarNode<'tcx, T>>;
+// pub type GenOprs<'tcx, T> = Vec<BasicOp<'tcx, T>>;
+// pub type UseMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, Vec<&'tcx BasicOp<'tcx, T>>>;
+// pub type SymbMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, Vec<&'tcx BasicOp<'tcx, T>>>;
+// pub type DefMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, &'tcx BasicOp<'tcx, T>>;
+// pub type ValuesBranchMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, ValueBranchMap<'tcx, T>>;
 // pub type ValuesSwitchMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, ValueSwitchMap<'tcx, T>>;
 // impl<'tcx, T: fmt::Debug + PartialOrd + Clone + Bounded> fmt::Debug for ValueBranchMap<'tcx, T> {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -51,7 +51,7 @@ impl<'tcx> PassRunner<'tcx> {
 
         // after_rename_mir
         let mut buffer2 = Cursor::new(Vec::new());
-        let options = PrettyPrintMirOptions::from_cli(self.tcx);
+        let options: PrettyPrintMirOptions = PrettyPrintMirOptions::from_cli(self.tcx);
         write_mir_fn(self.tcx, body, &mut |_, _| Ok(()), &mut buffer2, options).unwrap();
         let after_mir = String::from_utf8(buffer2.into_inner()).unwrap();
         after_mir

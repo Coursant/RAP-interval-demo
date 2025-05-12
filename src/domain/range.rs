@@ -1,3 +1,5 @@
+use std::default;
+
 use bounds::Bound;
 use intervals::*;
 use num_traits::{Bounded, Num, Zero};
@@ -61,7 +63,7 @@ where
             range: Interval::new_unchecked(bounds::Closed(lb), bounds::Closed(ub)),
         }
     }
-    pub fn default() -> Self {
+    pub fn default(default: T) -> Self {
         Self {
             rtype: RangeType::Regular,
 

@@ -96,8 +96,7 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, e
         passrunner.run_pass(body_mut_ref, ssa_def_id, essa_def_id);
         passrunner.print_diff(body_mut_ref);
 
-        let mut visitor = MyVisitor::new(body_mut_ref, def_id);
-        let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
+        let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(essa_def_id, ssa_def_id);
         cg.build_graph(body_mut_ref);
     }
 }

@@ -30,7 +30,7 @@ fn main() -> () {
         _12 = SSAstmt;
         _13 = SSAstmt;
         _14 = SSAstmt;
-        _3 = copy _13;
+        _3 = copy _14;
         _2 = Lt(move _3, const 100_i32);
         switchInt(move _2) -> [0: bb9, otherwise: bb2];
     }
@@ -45,8 +45,8 @@ fn main() -> () {
     bb3: {
         _16 = SSAstmt;
         _17 = SSAstmt;
-        _7 = copy _16;
-        _8 = copy _17;
+        _7 = copy _17;
+        _8 = copy _16;
         _6 = Lt(move _7, move _8);
         switchInt(move _6) -> [0: bb7, otherwise: bb4];
     }
