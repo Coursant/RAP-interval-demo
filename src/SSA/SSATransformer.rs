@@ -47,6 +47,21 @@ pub struct SSATransformer<'tcx> {
 }
 
 impl<'tcx> SSATransformer<'tcx> {
+    pub fn print_ssatransformer(&self) {
+        println!("SSATransformer:");
+        println!("cfg: {:?}", self.cfg);
+        println!("dominators: {:?}", self.dominators);
+        println!("dom_tree: {:?}", self.dom_tree);
+        println!("df: {:?}", self.df);
+        println!("local_assign_blocks: {:?}", self.local_assign_blocks);
+        println!("reaching_def: {:?}", self.reaching_def);
+        println!("local_index: {:?}", self.local_index);
+        println!("local_defination_block: {:?}", self.local_defination_block);
+        println!("skipped: {:?}", self.skipped);
+        println!("phi_index: {:?}", self.phi_index);
+        println!("phi_statements: {:?}", self.phi_statements);
+        println!("essa_statements: {:?}", self.essa_statements);
+    }
     fn find_phi_placeholder(tcx: TyCtxt<'_>, crate_name: &str) -> Option<DefId> {
         let sym_crate = Symbol::intern(crate_name);
         let krate = tcx
@@ -96,7 +111,6 @@ impl<'tcx> SSATransformer<'tcx> {
             skipped.extend(1..len + 1);
         }
         // let phi_def_id = tcx.type_of(tcx.local_def_id_to_hir_id(def_id).owner.to_def_id());
-
         // print!("phi_def_id: {:?}\n", def_id);
         // let phi_defid = Self::find_phi_placeholder(tcx, "RAP-interval-demo");
         // if let Some(def_id) = phi_defid {
@@ -108,7 +122,6 @@ impl<'tcx> SSATransformer<'tcx> {
         // print!("phi_ty: {:?}\n", phi_ty);
         // let crate_num: CrateNum = CrateNum::new(10); // LOCAL_CRATE 是当前 crate，或者用 CrateNum::new(0)
         // let def_index: DefIndex = CRATE_DEF_INDEX; // 这通常是 0，也可以用 DefIndex::from_usize(123)
-
         // let my_def_id = DefId { krate: crate_num, index: def_index };
 
         SSATransformer {

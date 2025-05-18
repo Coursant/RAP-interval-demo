@@ -17,6 +17,7 @@
 #![feature(yeet_expr)]
 // tidy-alphabetical-end
 #[macro_use]
+extern crate  rustc_abi;
 extern crate rustc_codegen_ssa;
 extern crate intervals;
 extern crate rustc_const_eval;

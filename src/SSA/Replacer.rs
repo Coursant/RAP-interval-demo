@@ -65,7 +65,7 @@ impl<'tcx> Replacer<'tcx> {
                 for _ in 0..predecessors.len() {
                     operands.push(Operand::Copy(Place::from(var)));
                 }
-                let phi_stmt = Statement {
+                let phi_stmt: Statement<'_> = Statement {
                     source_info: SourceInfo::outermost(body.span),
                     kind: StatementKind::Assign(Box::new((
                         Place::from(var),
@@ -133,7 +133,7 @@ impl<'tcx> Replacer<'tcx> {
     fn extract_condition(
         &self,
         place: &Place<'tcx>,
-        switch_block: BasicBlockData<'tcx>,
+        switch_block: &BasicBlockData<'tcx>,
     ) -> Option<(Operand<'tcx>, Operand<'tcx>, BinOp)> {
         for stmt in &switch_block.statements {
             if let StatementKind::Assign(box (lhs, Rvalue::BinaryOp(bin_op, box (op1, op2)))) =
@@ -209,7 +209,7 @@ impl<'tcx> Replacer<'tcx> {
         }));
         if let Operand::Copy(switch_place) | Operand::Move(switch_place) = discr {
             if let Some((op1, op2, cmp_op)) =
-                self.extract_condition(switch_place, switch_block_data)
+                self.extract_condition(switch_place, &switch_block_data)
             {
                 let const_op1: Option<&ConstOperand<'_>> = op1.constant();
                 let const_op2: Option<&ConstOperand<'_>> = op2.constant();
@@ -395,7 +395,7 @@ impl<'tcx> Replacer<'tcx> {
             if let TerminatorKind::SwitchInt { discr, .. } = &terminator.kind {
                 if let Operand::Copy(switch_place) | Operand::Move(switch_place) = discr {
                     if let Some((op1, op2, cmp_op)) =
-                        self.extract_condition(switch_place, switch_block_data)
+                        self.extract_condition(switch_place, &switch_block_data)
                     {
                         if op2.constant().is_none() {
                             let essa_statement = body.basic_blocks.as_mut()[succ_bb]
@@ -407,6 +407,7 @@ impl<'tcx> Replacer<'tcx> {
                                     if let Rvalue::Aggregate(_, operands) = rvalue {
                                         let loc_1: usize = 0;
                                         let loc_2: usize = 1;
+
                                         operands[loc_1.into()] = op1.clone();
                                         operands[loc_2.into()] = op2.clone();
                                     }

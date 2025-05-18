@@ -57,6 +57,7 @@ use rustc_middle::{
 use rustc_mir_transform::*;
 use rustc_target::abi::FieldIdx;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::env;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Write};
@@ -96,8 +97,10 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, e
         passrunner.run_pass(body_mut_ref, ssa_def_id, essa_def_id);
         passrunner.print_diff(body_mut_ref);
 
-        let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(essa_def_id, ssa_def_id);
+        let mut cg: ConstraintGraph<'tcx, usize> = ConstraintGraph::new(essa_def_id, ssa_def_id);
         cg.build_graph(body_mut_ref);
+        // let mut cg_usize: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(essa_def_id, ssa_def_id);
+        // cg_usize.build_graph(body_mut_ref);
     }
 }
 
@@ -139,18 +142,32 @@ impl Callbacks for MyDataflowCallbacks {
     }
 }
 
-// 在main函数中使用rustc_driver手动调用编译过程，并运行回调进行数据流分析
 fn main() {
-    std::env::set_var("RUST_BACKTRACE", "full");
+    // 打开 backtrace
+    env::set_var("RUST_BACKTRACE", "full");
 
-    let args = vec![
-        String::from("rustc"),
-        String::from("tests/test1.rs"),
-        String::from("--crate-type=bin"),
-        String::from("-Zalways-encode-mir"),
+    // 获取命令行参数，跳过第一个参数（程序名）
+    let mut args: Vec<String> = env::args().collect();
+
+    // 检查是否提供了输入文件
+    if args.len() < 2 {
+        eprintln!("用法: {} <测试文件路径>", args[0]);
+        std::process::exit(1);
+    }
+
+    // 拿出测试文件路径
+    let input_file = args.remove(1);
+
+    // 构建传给 RunCompiler 的参数
+    let mut rustc_args = vec![
+        "rustc".to_string(),
+        input_file,
+        "--crate-type=bin".to_string(),
+        "-Zalways-encode-mir".to_string(),
     ];
 
-    RunCompiler::new(&args, &mut MyDataflowCallbacks)
+    // 运行编译器
+    RunCompiler::new(&rustc_args, &mut MyDataflowCallbacks)
         .run()
         .unwrap();
 }

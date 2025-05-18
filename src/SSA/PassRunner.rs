@@ -18,6 +18,8 @@ use rustc_middle::mir::*;
 // use rustc_middle::mir::{visit::MutVisitor, Body};
 use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
+use crate::SSA::ssa;
+
 // use crate::domain::ConstraintGraph::ConstraintGraph;
 use super::SSATransformer::SSATransformer;
 
@@ -80,6 +82,7 @@ impl<'tcx> PassRunner<'tcx> {
     // }
     pub fn run_pass(&self, body: &mut Body<'tcx>, ssa_def_id: DefId, essa_def_id: DefId) {
         let ssatransformer = SSATransformer::new(self.tcx, body, ssa_def_id, essa_def_id);
+        ssatransformer.print_ssatransformer();
         let mut replacer = Replacer {
             tcx: self.tcx,
             ssatransformer,

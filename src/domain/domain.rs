@@ -1,10 +1,31 @@
 use super::range::Range;
-use num_traits::Bounded;
-use rustc_middle::mir::{BasicBlock, Local, LocalDecl, Place, Statement};
+use num_traits::{Bounded, ToPrimitive};
+use rustc_abi::Size;
+use rustc_middle::mir::{BasicBlock, Const, Local, LocalDecl, Place, Statement};
+use rustc_middle::ty::ScalarInt;
 use std::cmp::PartialEq;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
+pub trait ConstConvert: Sized {
+    fn from_const(c: &Const) -> Option<Self>;
+}
+
+
+impl ConstConvert for u32 {
+    fn from_const(c: &Const) -> Option<Self> {
+        Some(c.try_to_scalar_int().unwrap().to_u32())
+    }
+}
+impl ConstConvert for usize {
+    fn from_const(c: &Const) -> Option<Self> {
+                let size = Size::from_bits(32);
+                // let size = Size::from_bits(std::mem::size_of::<usize>() as u64 * 8);
+
+        c.try_to_bits(size).unwrap().to_usize()
+
+    }
+}
 
 #[derive(Debug)]
 pub enum IntervalType<'tcx, T: PartialOrd + Clone + Bounded> {
@@ -49,12 +70,12 @@ impl<T: PartialOrd + Clone + Bounded> BasicIntervalTrait<T> for BasicInterval<T>
 #[derive(Debug)]
 pub struct SymbInterval<'tcx, T: PartialOrd + Clone + Bounded> {
     range: Range<T>,
-    symbound: &'tcx Place<'tcx>,
+    symbound: Place<'tcx>,
     predicate: bool,
 }
 
 impl<'tcx, T: PartialOrd + Clone + Bounded> SymbInterval<'tcx, T> {
-    pub fn new(range: Range<T>, symbound: &'tcx Place<'tcx>, predicate: bool) -> Self {
+    pub fn new(range: Range<T>, symbound: Place<'tcx>, predicate: bool) -> Self {
         Self {
             range: range,
             symbound,
@@ -99,57 +120,269 @@ pub trait Operation<T: PartialOrd + Clone + Bounded> {
     fn print(&self, os: &mut dyn fmt::Write);
 }
 
-#[derive(Debug, Clone)]
-pub struct BasicOp<'tcx, T: PartialOrd + Clone + Bounded> {
+// #[derive(Debug, Clone)]
+// pub struct BasicOp<'tcx, T: PartialOrd + Clone + Bounded> {
+//     pub intersect: BasicInterval<T>,
+//     pub sink: Place<'tcx>,
+//     pub inst: &'tcx Statement<'tcx>,
+// }
+
+// impl<'tcx, T: PartialOrd + Clone + Bounded> BasicOp<'tcx, T> {
+//     // Constructor for creating a new BasicOp
+//     pub fn new(
+//         intersect: BasicInterval<T>,
+//         sink: Place<'tcx>,
+//         inst: &'tcx Statement<'tcx>,
+//     ) -> Self {
+//         BasicOp {
+//             intersect,
+//             sink,
+//             inst,
+//         }
+//     }
+
+//     pub fn get_instruction(&self) -> Option<&Statement<'tcx>> {
+//         Some(self.inst)
+//     }
+
+//     pub fn fix_intersects(&mut self, _v: &VarNode<T>) {}
+
+//     pub fn set_intersect(&mut self, new_intersect: Range<T>) {
+//         self.intersect.set_range(new_intersect);
+//     }
+
+//     pub fn get_sink(&self) -> Place<'tcx> {
+//         self.sink
+//     }
+//     // Returns the instruction that originated this operation
+
+//     // Returns the target of the operation (sink), mutable version
+// }
+
+// // Implement the Operation trait for BasicOp
+// impl<'tcx, T: PartialOrd + Clone + Bounded> Operation<T> for BasicOp<'tcx, T> {
+//     fn get_value_id(&self) -> u32 {
+//         0 // Placeholder implementation
+//     }
+
+//     fn eval(&self) -> Range<T> {
+//         // Placeholder for evaluating the range
+//         Range::default(T::min_value()) // Assuming Range<T> implements Default
+//     }
+
+//     fn print(&self, os: &mut dyn fmt::Write) {}
+// }
+#[derive(Debug)]
+pub enum BasicOpKind<'tcx, T: PartialOrd + Clone + Bounded> {
+    Unary(UnaryOp<'tcx, T>),
+    Binary(BinaryOp<'tcx, T>),
+    Essa(EssaOp<'tcx, T>),
+    ControlDep(ControlDep<'tcx, T>),
+    Phi(PhiOp<'tcx, T>),
+    Use(UseOp<'tcx, T>),
+}
+#[derive(Debug)]
+pub struct UseOp<'tcx, T: PartialOrd + Clone + Bounded> {
     pub intersect: BasicInterval<T>,
     pub sink: Place<'tcx>,
     pub inst: &'tcx Statement<'tcx>,
+    pub source: Place<'tcx>,
+    pub opcode: u32,
 }
 
-impl<'tcx, T: PartialOrd + Clone + Bounded> BasicOp<'tcx, T> {
-    // Constructor for creating a new BasicOp
+impl<'tcx, T: PartialOrd + Clone + Bounded> UseOp<'tcx, T> {
     pub fn new(
         intersect: BasicInterval<T>,
         sink: Place<'tcx>,
         inst: &'tcx Statement<'tcx>,
+        source: Place<'tcx>,
+        opcode: u32,
     ) -> Self {
-        BasicOp {
+        Self {
             intersect,
             sink,
             inst,
+            source,
+            opcode,
         }
     }
 
-    pub fn get_instruction(&self) -> Option<&Statement<'tcx>> {
-        Some(self.inst)
+    pub fn eval(&self) -> Range<T> {
+        // 示例逻辑（用户可自定义）
+        self.intersect.range.clone()
     }
-
-    pub fn fix_intersects(&mut self, _v: &VarNode<T>) {}
-
-    pub fn set_intersect(&mut self, new_intersect: Range<T>) {
-        self.intersect.set_range(new_intersect);
-    }
-
-    pub fn get_sink(&self) -> Place<'tcx> {
-        self.sink
-    }
-    // Returns the instruction that originated this operation
-
-    // Returns the target of the operation (sink), mutable version
+}
+#[derive(Debug)]
+pub struct UnaryOp<'tcx, T: PartialOrd + Clone + Bounded> {
+    pub intersect: BasicInterval<T>,
+    pub sink: Place<'tcx>,
+    pub inst: &'tcx Statement<'tcx>,
+    pub source: Place<'tcx>,
+    pub opcode: u32,
 }
 
-// Implement the Operation trait for BasicOp
-impl<'tcx, T: PartialOrd + Clone + Bounded> Operation<T> for BasicOp<'tcx, T> {
-    fn get_value_id(&self) -> u32 {
-        0 // Placeholder implementation
+impl<'tcx, T: PartialOrd + Clone + Bounded> UnaryOp<'tcx, T> {
+    pub fn new(
+        intersect: BasicInterval<T>,
+        sink: Place<'tcx>,
+        inst: &'tcx Statement<'tcx>,
+        source: Place<'tcx>,
+        opcode: u32,
+    ) -> Self {
+        Self {
+            intersect,
+            sink,
+            inst,
+            source,
+            opcode,
+        }
     }
 
-    fn eval(&self) -> Range<T> {
-        // Placeholder for evaluating the range
-        Range::default(T::min_value()) // Assuming Range<T> implements Default
+    pub fn eval(&self) -> Range<T> {
+        // 示例逻辑（用户可自定义）
+        self.intersect.range.clone()
+    }
+}
+#[derive(Debug)]
+
+pub struct EssaOp<'tcx, T: PartialOrd + Clone + Bounded> {
+    pub intersect: BasicInterval<T>,
+    pub sink: Place<'tcx>,
+    pub inst: &'tcx Statement<'tcx>,
+    pub source: Place<'tcx>,
+    pub opcode: u32,
+    pub unresolved: bool,
+}
+
+impl<'tcx, T: PartialOrd + Clone + Bounded> EssaOp<'tcx, T> {
+    pub fn new(
+        intersect: BasicInterval<T>,
+        sink: Place<'tcx>,
+        inst: &'tcx Statement<'tcx>,
+        source: Place<'tcx>,
+        opcode: u32,
+    ) -> Self {
+        Self {
+            intersect,
+            sink,
+            inst,
+            source,
+            opcode,
+            unresolved: true,
+        }
     }
 
-    fn print(&self, os: &mut dyn fmt::Write) {}
+    pub fn eval(&self) -> Range<T> {
+        self.intersect.range.clone()
+    }
+
+    pub fn is_unresolved(&self) -> bool {
+        self.unresolved
+    }
+
+    pub fn mark_resolved(&mut self) {
+        self.unresolved = false;
+    }
+
+    pub fn mark_unresolved(&mut self) {
+        self.unresolved = true;
+    }
+}
+#[derive(Debug)]
+
+pub struct BinaryOp<'tcx, T: PartialOrd + Clone + Bounded> {
+    pub intersect: BasicInterval<T>,
+    pub sink: Place<'tcx>,
+    pub inst: &'tcx Statement<'tcx>,
+    pub source1: Option<Place<'tcx>>,
+    pub source2: Option<Place<'tcx>>,
+    pub opcode: u32,
+}
+
+impl<'tcx, T: PartialOrd + Clone + Bounded> BinaryOp<'tcx, T> {
+    pub fn new(
+        intersect: BasicInterval<T>,
+        sink: Place<'tcx>,
+        inst: &'tcx Statement<'tcx>,
+        source1: Option<Place<'tcx>>,
+        source2: Option<Place<'tcx>>,
+        opcode: u32,
+    ) -> Self {
+        Self {
+            intersect,
+            sink,
+            inst,
+            source1,
+            source2,
+            opcode,
+        }
+    }
+
+    pub fn eval(&self) -> Range<T> {
+        self.intersect.range.clone()
+    }
+}
+#[derive(Debug)]
+
+pub struct PhiOp<'tcx, T: PartialOrd + Clone + Bounded> {
+    pub intersect: BasicInterval<T>,
+    pub sink: Place<'tcx>,
+    pub inst: &'tcx Statement<'tcx>,
+    pub sources: Vec<Place<'tcx>>,
+    pub opcode: u32,
+}
+
+impl<'tcx, T: PartialOrd + Clone + Bounded> PhiOp<'tcx, T> {
+    pub fn new(
+        intersect: BasicInterval<T>,
+        sink: Place<'tcx>,
+        inst: &'tcx Statement<'tcx>,
+        opcode: u32,
+    ) -> Self {
+        Self {
+            intersect,
+            sink,
+            inst,
+            sources: vec![],
+            opcode,
+        }
+    }
+
+    pub fn add_source(&mut self, src: Place<'tcx>) {
+        self.sources.push(src);
+    }
+
+    pub fn eval(&self) -> Range<T> {
+        self.intersect.range.clone()
+    }
+}
+#[derive(Debug)]
+
+pub struct ControlDep<'tcx, T: PartialOrd + Clone + Bounded> {
+    pub intersect: BasicInterval<T>,
+    pub sink: Place<'tcx>,
+    pub inst: &'tcx Statement<'tcx>,
+    pub source: Place<'tcx>,
+}
+
+impl<'tcx, T: PartialOrd + Clone + Bounded> ControlDep<'tcx, T> {
+    pub fn new(
+        intersect: BasicInterval<T>,
+        sink: Place<'tcx>,
+        inst: &'tcx Statement<'tcx>,
+        source: Place<'tcx>,
+    ) -> Self {
+        Self {
+            intersect,
+            sink,
+            inst,
+            source,
+        }
+    }
+
+    pub fn eval(&self) -> Range<T> {
+        self.intersect.range.clone()
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -230,7 +463,7 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> VarNode<'tcx, T> {
 }
 #[derive(Debug)]
 pub struct ValueBranchMap<'tcx, T: PartialOrd + Clone + Bounded> {
-    v: &'tcx Place<'tcx>,         // The value associated with the branch
+    v: Place<'tcx>,               // The value associated with the branch
     bb_true: &'tcx BasicBlock,    // True side of the branch
     bb_false: &'tcx BasicBlock,   // False side of the branch
     itv_t: IntervalType<'tcx, T>, // Interval for the true side
@@ -238,7 +471,7 @@ pub struct ValueBranchMap<'tcx, T: PartialOrd + Clone + Bounded> {
 }
 impl<'tcx, T: PartialOrd + Clone + Bounded> ValueBranchMap<'tcx, T> {
     pub fn new(
-        v: &'tcx Place<'tcx>,
+        v: Place<'tcx>,
         bb_true: &'tcx BasicBlock,
         bb_false: &'tcx BasicBlock,
         itv_t: IntervalType<'tcx, T>,
@@ -274,7 +507,7 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> ValueBranchMap<'tcx, T> {
     }
 
     /// Get the value associated with the branch
-    pub fn get_v(&self) -> &Place<'tcx> {
+    pub fn get_v(&self) -> Place<'tcx> {
         self.v
     }
 
@@ -298,11 +531,11 @@ impl<'tcx, T: PartialOrd + Clone + Bounded> ValueBranchMap<'tcx, T> {
 //     Place(Place<'tcx>),
 // }
 pub type VarNodes<'tcx, T> = HashMap<Place<'tcx>, VarNode<'tcx, T>>;
-pub type GenOprs<'tcx, T> = Vec<BasicOp<'tcx, T>>;
-pub type UseMap<'tcx> = HashMap<Place<'tcx>, Vec<usize>>;
-pub type SymbMap<'tcx> = HashMap<Place<'tcx>, Vec<usize>>;
+pub type GenOprs<'tcx, T> = Vec<BasicOpKind<'tcx, T>>;
+pub type UseMap<'tcx> = HashMap<Place<'tcx>, HashSet<usize>>;
+pub type SymbMap<'tcx> = HashMap<Place<'tcx>, HashSet<usize>>;
 pub type DefMap<'tcx> = HashMap<Place<'tcx>, usize>;
-pub type ValuesBranchMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, ValueBranchMap<'tcx, T>>;
+pub type ValuesBranchMap<'tcx, T> = HashMap<Place<'tcx>, ValueBranchMap<'tcx, T>>;
 // pub type VarNodes<'tcx, T> = HashMap<&'tcx Place<'tcx>, VarNode<'tcx, T>>;
 // pub type GenOprs<'tcx, T> = Vec<BasicOp<'tcx, T>>;
 // pub type UseMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, Vec<&'tcx BasicOp<'tcx, T>>>;

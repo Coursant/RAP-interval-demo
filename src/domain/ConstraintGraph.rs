@@ -3,12 +3,14 @@ use super::{domain::*, range::RangeType, range::*};
 use num_traits::Bounded;
 use rand::Rng;
 use rustc_hir::{def, def_id::DefId};
+use rustc_index::IndexVec;
 use rustc_middle::{
     mir::*,
-    ty::{self, print, Const, ScalarInt, TyCtxt},
+    ty::{self, print, ScalarInt, TyCtxt},
 };
 use rustc_mir_transform::*;
 use rustc_span::sym::var;
+use rustc_target::abi::FieldIdx;
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -34,8 +36,12 @@ pub struct ConstraintGraph<'tcx, T: PartialOrd + Clone + Bounded + Debug> {
 
 impl<'tcx, T> ConstraintGraph<'tcx, T>
 where
-    T: PartialOrd + Clone + Bounded + From<ScalarInt> + Debug,
-{
+    T: PartialOrd + Clone + Bounded + ConstConvert + Debug,
+    {
+    pub fn convert_const(&self, c: &Const) -> Option<T> {
+        T::from_const(c)
+    }
+
     pub fn new(essa: DefId, ssa: DefId) -> Self {
         Self {
             vars: VarNodes::new(),
@@ -87,7 +93,7 @@ where
         let node_ref: &mut VarNode<'tcx, T> = self.vars.entry(v).or_insert(node);
 
         // 确保 usemap 也更新
-        self.usemap.entry(v).or_insert(Vec::new());
+        self.usemap.entry(v).or_insert(HashSet::new());
 
         node_ref
     }
@@ -103,7 +109,7 @@ where
         let node_ref = self.vars.entry(inst_rand_place).or_insert(node);
 
         // 确保 usemap 也更新
-        self.usemap.entry(inst_rand_place).or_insert(Vec::new());
+        self.usemap.entry(inst_rand_place).or_insert(HashSet::new());
 
         inst_rand_place
     }
@@ -135,6 +141,9 @@ where
     pub fn build_graph(&mut self, body: &'tcx Body<'tcx>) {
         print!("====Building graph====\n");
         self.build_value_maps(body);
+        print!("varnodes{:?}\n", self.vars);
+        print!("vbm{:?}\n", self.values_branchmap);
+
         print!("====build_operations====\n");
 
         for block in body.basic_blocks.indices() {
@@ -196,7 +205,7 @@ where
                     (Some(c1), Some(c2)) => {}
                     (Some(c), None) | (None, Some(c)) => {
                         let const_in_left: bool;
-                        let variable: &Place<'tcx>;
+                        let variable: Place<'tcx>;
                         if const_op1.is_some() {
                             const_in_left = true;
                             variable = match op2 {
@@ -212,23 +221,24 @@ where
                         }
                         // 此处应根据T进行选取，设定为scalarInt
                         self.add_varnode(variable.clone());
-                        let scalar = c.const_.try_to_scalar_int().unwrap();
-                        let scalar_value: T = scalar.into();
+                        print!("add_vbm_varnode{:?}\n", variable.clone());
 
+                        // let value = c.const_.try_to_scalar_int().unwrap();
+                        let value  = self.convert_const(&c.const_).unwrap();
                         let const_range = Range::new(
-                            scalar_value.clone(),
-                            scalar_value.clone(),
+                            value.clone(),
+                            value.clone(),
                             RangeType::Regular,
                         );
 
                         let true_range = self.apply_comparison(
-                            scalar_value.clone(),
+                            value.clone(),
                             cmp_op,
                             true,
                             const_in_left,
                         );
                         let false_range = self.apply_comparison(
-                            scalar_value.clone(),
+                            value.clone(),
                             cmp_op,
                             false,
                             const_in_left,
@@ -241,7 +251,7 @@ where
                             IntervalType::Basic(BasicInterval::new(true_range)),
                             IntervalType::Basic(BasicInterval::new(false_range)),
                         );
-                        self.values_branchmap.insert(place, vbm);
+                        self.values_branchmap.insert(place.clone(), vbm);
                     }
                     (None, None) => {
                         // 两个变量之间的比较
@@ -258,11 +268,15 @@ where
                         };
                         let target_vec = targets.all_targets();
                         self.add_varnode(p1.clone());
+                        print!("add_vbm_varnode{:?}\n", p1.clone());
+
                         self.add_varnode(p2.clone());
-                        let STOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), &p2, true));
-                        let SFOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), &p2, false));
-                        let STOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), &p1, true));
-                        let SFOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), &p1, false));
+                        print!("add_vbm_varnode{:?}\n", p2.clone());
+
+                        let STOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, true));
+                        let SFOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, false));
+                        let STOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), p1, true));
+                        let SFOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), p1, false));
                         let vbm_1 =
                             ValueBranchMap::new(p1, &target_vec[0], &target_vec[1], STOp1, SFOp1);
                         let vbm_2 =
@@ -277,17 +291,37 @@ where
 
     fn extract_condition(
         &self,
-        place: &'tcx Place<'tcx>,
-        block: &'tcx BasicBlockData<'tcx>,
-    ) -> Option<(&'tcx Operand<'tcx>, &'tcx Operand<'tcx>, BinOp)> {
-        for stmt in &block.statements {
+        place: &Place<'tcx>,
+        switch_block: &BasicBlockData<'tcx>,
+    ) -> Option<(Operand<'tcx>, Operand<'tcx>, BinOp)> {
+        for stmt in &switch_block.statements {
             if let StatementKind::Assign(box (lhs, Rvalue::BinaryOp(bin_op, box (op1, op2)))) =
                 &stmt.kind
             {
                 if lhs == place {
-                    print!("switchcondition{:?}\n", stmt);
-
-                    return Some((op1, op2, *bin_op));
+                    let mut return_op1: &Operand<'tcx> = &op1;
+                    let mut return_op2: &Operand<'tcx> = &op2;
+                    for stmt_original in &switch_block.statements {
+                        if let StatementKind::Assign(box (lhs, Rvalue::Use(OP1))) =
+                            &stmt_original.kind
+                        {
+                            if lhs.clone() == op1.place().unwrap() {
+                                return_op1 = OP1;
+                            }
+                        }
+                    }
+                    if op2.constant().is_none() {
+                        for stmt_original in &switch_block.statements {
+                            if let StatementKind::Assign(box (lhs, Rvalue::Use(OP2))) =
+                                &stmt_original.kind
+                            {
+                                if lhs.clone() == op2.place().unwrap() {
+                                    return_op2 = OP2;
+                                }
+                            }
+                        }
+                    }
+                    return Some((return_op1.clone(), return_op2.clone(), *bin_op));
                 }
             }
         }
@@ -411,12 +445,22 @@ where
                         | BinOp::Mul
                         | BinOp::Div
                         | BinOp::Rem
-                        | BinOp::AddUnchecked
-                        | BinOp::AddWithOverflow
-                        | BinOp::SubUnchecked
-                        | BinOp::SubWithOverflow
-                        | BinOp::MulUnchecked
-                        | BinOp::MulWithOverflow => {
+                        | BinOp::AddUnchecked => {
+                            self.add_binary_op(inst, op1, op2);
+                        }
+                        BinOp::AddWithOverflow => {
+                            self.add_binary_op(inst, op1, op2);
+                        }
+                        BinOp::SubUnchecked => {
+                            self.add_binary_op(inst, op1, op2);
+                        }
+                        BinOp::SubWithOverflow => {
+                            self.add_binary_op(inst, op1, op2);
+                        }
+                        BinOp::MulUnchecked => {
+                            self.add_binary_op(inst, op1, op2);
+                        }
+                        BinOp::MulWithOverflow => {
                             self.add_binary_op(inst, op1, op2);
                         }
 
@@ -424,19 +468,19 @@ where
                         _ => {}
                     }
                 }
-                Rvalue::UnaryOp(op, op1) => {
-                    self.add_unary_op(inst);
+                Rvalue::UnaryOp(UnOp, op) => {
+                    self.add_unary_op(inst, op);
                 }
                 Rvalue::Aggregate(kind, operends) => {
                     // 处理聚合类型的 Rvalue
                     match **kind {
                         AggregateKind::Adt(def_id, _, _, _, _) => {
                             if def_id == self.essa {
-                                self.add_essa_op(inst);
+                                self.add_essa_op(inst, operends);
                                 // println!("Adt{:?}\n", operends);
                             }
                             if def_id == self.ssa {
-                                self.add_ssa_op(inst);
+                                self.add_ssa_op(inst, operends);
                                 // println!("Adt{:?}\n", operends);
                             }
                         }
@@ -447,7 +491,9 @@ where
                     // 处理使用操作数的 Rvalue
                     match operend {
                         Operand::Copy(place) | Operand::Move(place) => {
-                            self.add_varnode(place.clone());
+
+                            self.add_use_op(inst, operend);
+
                         }
                         Operand::Constant(_) => {
                             // 处理常量操作数
@@ -462,17 +508,116 @@ where
             }
         }
     }
-    fn add_ssa_op(&mut self, stmt: &'tcx Statement<'tcx>) {
-        // let rand_place: Place<'tcx> = Self::create_random_place();
-        // let stmt_varnode = self.add_varnode(Box::leak(Box::new(rand_place)));
+    fn add_ssa_op(
+        &mut self,
+        inst: &'tcx Statement<'tcx>,
+        operands: &IndexVec<FieldIdx, Operand<'tcx>>,
+    ) {
+        print!("ssa_op{:?}\n", inst);
+        self.add_varnode_inst(inst);
+
+        let sink = self.add_varnode_inst(inst);
+        let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
+        let mut phiop = PhiOp::new(BI, sink, inst, 0);
+                let bop_index = self.oprs.len();
+
+        for i in 0..operands.len() {
+            let source = match operands[i.into()] {
+                Operand::Copy(place) | Operand::Move(place) => Some(place.clone()),
+                _ => None, // 不处理 Constant
+            };
+            if let Some(source) = source {
+                self.add_varnode(source.clone());
+                phiop.add_source(source.clone());
+                println!("addvar_in_ssa_op{:?}\n", source);
+                            self.usemap
+                .entry(source)
+                .or_default()
+                .insert(bop_index);
+            }
+        }
+        // Insert the operation in the graph.
+
+        self.oprs.push(BasicOpKind::Phi(phiop));
+
+        // Insert this definition in defmap
+
+        self.defmap.insert(sink, bop_index);
     }
-    fn add_essa_op(&mut self, stmt: &'tcx Statement<'tcx>) {
-        // let rand_place: Place<'tcx> = Self::create_random_place();
-        // let stmt_varnode = self.add_varnode(Box::leak(Box::new(rand_place)));
+    fn add_use_op(
+        &mut self,
+        inst: &'tcx Statement<'tcx>, op: &'tcx Operand<'tcx>
+    ) {
+        print!("use_op{:?}\n", inst);
+        self.add_varnode_inst(inst);
+
+        let sink = self.add_varnode_inst(inst);
+
+        let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
+        let source = match op {
+            Operand::Copy(place) | Operand::Move(place) => Some(place.clone()),
+            _ => None, // 不处理 Constant
+        };
+        println!("addvar_in_use_op{:?}\n", source.unwrap());
+
+        let essaop = EssaOp::new(BI, sink, inst, source.unwrap(), 0);
+        // Insert the operation in the graph.
+        let bop_index = self.oprs.len();
+
+        self.oprs.push(BasicOpKind::Essa(essaop));
+        // Insert this definition in defmap
+
+        self.defmap.insert(sink, bop_index);
     }
-    fn add_unary_op(&mut self, stmt: &'tcx Statement<'tcx>) {
-        // let rand_place: Place<'tcx> = Self::create_random_place();
-        // let stmt_varnode = self.add_varnode(Box::leak(Box::new(rand_place)));
+    fn add_essa_op(
+        &mut self,
+        inst: &'tcx Statement<'tcx>,
+        operands: &IndexVec<FieldIdx, Operand<'tcx>>,
+    ) {
+        print!("essa_op{:?}\n", inst);
+        self.add_varnode_inst(inst);
+
+        let sink = self.add_varnode_inst(inst);
+
+        let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
+        let loc_1: usize = 0;
+        let source = match operands[loc_1.into()] {
+            Operand::Copy(place) | Operand::Move(place) => Some(place.clone()),
+            _ => None, // 不处理 Constant
+        };
+        println!("addvar_in_essa_op{:?}\n", source.unwrap());
+
+        let essaop = EssaOp::new(BI, sink, inst, source.unwrap(), 0);
+        // Insert the operation in the graph.
+        let bop_index = self.oprs.len();
+
+        self.oprs.push(BasicOpKind::Essa(essaop));
+        // Insert this definition in defmap
+
+        self.defmap.insert(sink, bop_index);
+    }
+    fn add_unary_op(&mut self, inst: &'tcx Statement<'tcx>, op: &'tcx Operand<'tcx>) {
+        print!("unary_op{:?}\n", inst);
+        self.add_varnode_inst(inst);
+
+        let sink = self.add_varnode_inst(inst);
+
+        let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
+        let loc_1: usize = 0;
+        let source = match op {
+            Operand::Copy(place) | Operand::Move(place) => Some(place.clone()),
+            _ => None, // 不处理 Constant
+        };
+        println!("addvar_in_unary_op{:?}\n", source.unwrap());
+
+        let essaop = EssaOp::new(BI, sink, inst, source.unwrap(), 0);
+        // Insert the operation in the graph.
+        let bop_index = self.oprs.len();
+
+        self.oprs.push(BasicOpKind::Essa(essaop));
+        // Insert this definition in defmap
+
+        self.defmap.insert(sink, bop_index);
     }
 
     fn add_binary_op(
@@ -481,15 +626,17 @@ where
         op1: &'tcx Operand<'tcx>,
         op2: &'tcx Operand<'tcx>,
     ) {
-        // Implementation for adding binary operation
-        // let sink = self.add_varnode_inst(inst);
-        print!("add_binary_op{:?}\n", inst);
+        print!("binary_op{:?}\n", inst);
         self.add_varnode_inst(inst);
+
         let sink = self.add_varnode_inst(inst);
+
         let source1_place = match op1 {
             Operand::Copy(place) | Operand::Move(place) => {
                 self.add_varnode(place.clone()); // 构建 VarNode 图
-                Some(place)
+                        println!("addvar_in_binary_op{:?}\n", place);
+
+                Some(place.clone())
             }
             Operand::Constant(_) => None, // 先忽略
         };
@@ -497,28 +644,31 @@ where
         let source2_place = match op2 {
             Operand::Copy(place) | Operand::Move(place) => {
                 self.add_varnode(place.clone());
-                Some(place)
+                                        println!("addvar_in_binary_op{:?}\n", place);
+
+                Some(place.clone())
             }
             Operand::Constant(_) => None,
         };
-        let BI = BasicInterval::new(Range::default(T::min_value()));
-        let BOP = BasicOp::new(BI, sink, inst);
-        self.oprs.push(BOP);
-        let bop_index = self.oprs.len() - 1;
+        let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
+        let BOP = BinaryOp::new(BI, sink, inst, source1_place, source2_place, 0);
+        let bop_index = self.oprs.len();
+
+        self.oprs.push(BasicOpKind::Binary(BOP));
         // let bop_ref = unsafe { &*(self.oprs.last().unwrap() as *const BasicOp<'tcx, T>) };
         self.defmap.insert(sink, bop_index);
         if let Some(place) = source1_place {
             self.usemap
                 .entry(place.clone())
                 .or_default()
-                .push(bop_index);
+                .insert(bop_index);
         }
 
         if let Some(place) = source2_place {
             self.usemap
                 .entry(place.clone())
                 .or_default()
-                .push(bop_index);
+                .insert(bop_index);
         }
 
         // print!("varnodes{:?}\n", self.vars);
@@ -528,21 +678,12 @@ where
         // ...
     }
 
-    // fn add_phi_op(&mut self, phi: &'tcx PHINode<'tcx>) {
-    //     // Implementation for adding phi operation
-    //     // ...
-    // }
-
-    // fn add_sigma_op(&mut self, phi: &'tcx PHINode<'tcx>) {
-    //     // Implementation for adding sigma operation
-    //     // ...
-    // }
     // pub fn find_intervals(&mut self) {
     //     // 构建符号交集映射
     //     self.build_symbolic_intersect_map();
 
     //     // 查找强连通分量（SCC）
-    //     let scc_list = Nuutila::new(&self.vars, &self.usemap, &self.symbmap);
+    //     let scc_list = Nuutila::new(&self.vars, &self.usemap, &self.symbmap,false);
     //     self.num_sccs += scc_list.worklist.len();
 
     //     // 遍历每个 SCC
@@ -616,7 +757,7 @@ where
     //     // 遍历每个 SCC
     //     for scc_id in scc_list.iter() {
     //         let component = scc_list.components[scc_id].clone(); // SmallPtrSet<VarNode*, 32>
-            
+
     //         if component.len() == 1 {
     //             num_alone_sccs += 1;
     //             self.fix_intersects(&component);
@@ -636,8 +777,6 @@ where
 
     //             // 找出入口点
     //             let mut entry_points = SmallPtrSet::<&Value, 6>::default();
-
-
 
     //             // 第一次固定点迭代前处理
     //             self.generate_entry_points(&component, &mut entry_points);
@@ -663,57 +802,150 @@ where
     // }
 }
 
-pub struct Nuutila<'tcx,T: PartialOrd + Clone + Bounded + Debug> {
-    pub variables: &'tcx VarNodes<'tcx,T>,
+pub struct Nuutila<'tcx, T: PartialOrd + Clone + Bounded + Debug> {
+    pub variables: &'tcx VarNodes<'tcx, T>,
     pub index: i32,
     pub dfs: HashMap<Place<'tcx>, i32>,
     pub root: HashMap<Place<'tcx>, Place<'tcx>>,
     pub in_component: HashSet<Place<'tcx>>,
-    pub components: HashMap<Place<'tcx>, HashSet<&'tcx VarNode<'tcx,T>>>,
+    pub components: HashMap<Place<'tcx>, HashSet<&'tcx VarNode<'tcx, T>>>,
     pub worklist: VecDeque<Place<'tcx>>,
 }
 
-impl<'tcx,T> Nuutila<'tcx,T>
+impl<'tcx, T> Nuutila<'tcx, T>
 where
-    T: PartialOrd + Clone + Bounded + From<ScalarInt> + Debug, {
+    T: PartialOrd + Clone + Bounded + From<ScalarInt> + Debug,
+{
+
     pub fn new(
-        variables: &'tcx VarNodes<'tcx,T>,
-        use_map: &UseMap<'tcx>,
+        varNodes: &'tcx VarNodes<'tcx, T>,
+        use_map: &mut UseMap<'tcx>,
         symb_map: &SymbMap<'tcx>,
-        _single: bool,
+        single: bool,
     ) -> Self {
         let mut n = Nuutila {
-            variables,
+            variables:varNodes,
             index: 0,
             dfs: HashMap::new(),
             root: HashMap::new(),
             in_component: HashSet::new(),
             components: HashMap::new(),
             worklist: std::collections::VecDeque::new(),
+            // 如果你用到了 control_deps 字段
+            // control_deps: HashSet::new(),
         };
 
-        // 你可以在这里自动触发 visit 全部 Place
-        // for v in variables.iter() {
-        //     n.visit(&v.place, &mut vec![], use_map);
-        // }
+        if single {
+            // 所有变量归入一个 SCC
+            // let mut scc = HashSet::new();
+            // for var_node in variables.values() {
+            //     scc.insert(var_node.clone());
+            // }
+
+            // for (place, _) in variables.iter() {
+            //     n.components.insert(place.clone(), scc.clone());
+            // }
+
+            // // 任选一个 place 放入 worklist
+            // if let Some((first_place, _)) = variables.iter().next() {
+            //     n.worklist.push_back(first_place.clone());
+            // }
+        } else {
+            // 初始化 dfs 值
+            for place in n.variables.keys() {
+                n.dfs.insert(place.clone(), -1);
+            }
+
+            n.add_control_dependence_edges(symb_map, use_map, varNodes);
+
+            for place in n.variables.keys() {
+                if n.dfs[place] < 0 {
+                    let mut stack = Vec::new();
+                    n.visit(place, &mut stack, use_map);
+                }
+            }
+
+            n.del_control_dependence_edges(use_map);
+        }
 
         n
     }
 
+
+
+
     pub fn visit(
         &mut self,
-        _place: &Place<'tcx>,
-        _stack: &mut Vec<Place<'tcx>>,
-        _use_map: &UseMap<'tcx>,
+        place: &Place<'tcx>,
+        stack: &mut Vec<Place<'tcx>>,
+        use_map: &UseMap<'tcx>,
     ) {
-        todo!("实现 Nuutila 算法中的 visit 函数");
+        self.dfs.insert(place.clone(), self.index);
+        self.index += 1;
+        self.root.insert(place.clone(), place.clone());
+
+        // 访问所有使用该变量的 BasicOp（或指令）
+        // if let Some(uses) = use_map.get(place) {
+        //     for op in uses {
+        //         let name = op.sink().value();
+
+        //         // 初始化 dfs 值（如果尚未访问）
+        //         if self.dfs.get(name).copied().unwrap_or(-1) < 0 {
+        //             self.visit(name, stack, use_map);
+        //         }
+
+        //         // 如果 name 不在任何组件中，并且 root 更新
+        //         if !self.in_component.contains(name) {
+        //             let root_place = self.root.get(place).unwrap().clone();
+        //             let root_name = self.root.get(name).unwrap().clone();
+
+        //             let dfs_root_place = self.dfs.get(&root_place).copied().unwrap();
+        //             let dfs_root_name = self.dfs.get(&root_name).copied().unwrap();
+
+        //             if dfs_root_place >= dfs_root_name {
+        //                 self.root.insert(place.clone(), root_name);
+        //             }
+        //         }
+        //     }
+        // }
+
+        // // 第二阶段：确定组件并构建 SCC
+        // if self.root.get(place) == Some(place) {
+        //     self.worklist.push_back(place.clone());
+
+        //     let mut scc = HashSet::new();
+        //     if let Some(var_node) = self.variables.get(place) {
+        //         scc.insert(var_node.clone());
+        //     }
+
+        //     self.in_component.insert(place.clone());
+
+        //     while let Some(top) = stack.last() {
+        //         if self.dfs.get(top).copied().unwrap_or(-1) > self.dfs.get(place).copied().unwrap() {
+        //             let node = stack.pop().unwrap();
+        //             self.in_component.insert(node.clone());
+
+        //             if let Some(var_node) = self.variables.get(&node) {
+        //                 scc.insert(var_node.clone());
+        //             }
+        //         } else {
+        //             break;
+        //         }
+        //     }
+
+        //     self.components.insert(place.clone(), scc);
+        // } else {
+        //     stack.push(place.clone());
+        // }
     }
+
+
 
     pub fn add_control_dependence_edges(
         &mut self,
         _symb_map: &SymbMap<'tcx>,
         _use_map: &UseMap<'tcx>,
-        _vars: &'tcx VarNodes<'tcx,T>,
+        _vars: &'tcx VarNodes<'tcx, T>,
     ) {
         todo!()
     }
@@ -726,5 +958,3 @@ where
         self.worklist.iter().rev()
     }
 }
-
-
