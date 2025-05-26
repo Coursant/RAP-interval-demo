@@ -1,6 +1,11 @@
-use super::{domain::*, range::RangeType, range::*};
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_assignments)]
 
+use super::{domain::*, range::RangeType, range::*};
 use num_traits::Bounded;
+use once_cell::sync::{Lazy, OnceCell};
 use rand::Rng;
 use rustc_hir::{def, def_id::DefId};
 use rustc_index::IndexVec;
@@ -16,7 +21,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt::Debug,
 };
-pub struct ConstraintGraph<'tcx, T: PartialOrd + Clone + Bounded + Debug> {
+pub struct ConstraintGraph<'tcx, T: IntervalArithmetic + Debug> {
     // Protected fields
     pub vars: VarNodes<'tcx, T>, // The variables of the source program
     pub oprs: GenOprs<'tcx, T>,  // The operations of the source program
@@ -32,13 +37,22 @@ pub struct ConstraintGraph<'tcx, T: PartialOrd + Clone + Bounded + Debug> {
     pub inst_rand_place_set: Vec<Place<'tcx>>,
     pub essa: DefId,
     pub ssa: DefId,
+
+    pub index: i32,
+    pub dfs: HashMap<&'tcx Place<'tcx>, i32>,
+    pub root: HashMap<&'tcx Place<'tcx>, &'tcx Place<'tcx>>,
+    pub in_component: HashSet<&'tcx Place<'tcx>>,
+    pub components: HashMap<&'tcx Place<'tcx>, HashSet<&'tcx Place<'tcx>>>,
+    pub worklist: VecDeque<&'tcx Place<'tcx>>,
+    pub numAloneSCCs: usize,
+    pub numSCCs: usize, // Add a stub for pre_update to resolve the missing method error.
 }
 
 impl<'tcx, T> ConstraintGraph<'tcx, T>
 where
-    T: PartialOrd + Clone + Bounded + ConstConvert + Debug,
-    {
-    pub fn convert_const(&self, c: &Const) -> Option<T> {
+    T: IntervalArithmetic + ConstConvert + Debug,
+{
+    pub fn convert_const(c: &Const) -> Option<T> {
         T::from_const(c)
     }
 
@@ -56,27 +70,69 @@ where
             inst_rand_place_set: Vec::new(),
             essa,
             ssa,
+            index: 0,
+            dfs: HashMap::new(),
+            root: HashMap::new(),
+            in_component: HashSet::new(),
+            components: HashMap::new(),
+            worklist: VecDeque::new(),
+            numAloneSCCs: 0,
+            numSCCs: 0, // oprs:oprs
         }
     }
-    //     fn create_random_place() -> Place<'tcx> {
-    //     // 随机生成一个新的 Local 值
-    //     let mut rng = rand::rng();
-    //     let random_local = Local::from_usize(rng.random_range(0..100));
-
-    //     // 创建一个新的 Place 值，使用随机生成的 Local 和空的投影列表
-    //     let place = Place {
-    //         local: random_local,
-    //         projection: ,
-    //     };
-
-    //     place
-    // }
+    pub fn print_vars(&self) {
+        for (&key, value) in &self.vars {
+            println!("var: {:?}. {:?}\n ", key, value.get_range());
+        }
+    }
+    fn print_values_branchmap(&self) {
+        for (key, value) in &self.values_branchmap {
+            println!("vbm place: {:?}. {:?}\n ", key, value);
+        }
+    }
+    fn print_defmap(&self) {
+        for (key, value) in self.defmap.clone() {
+            println!(
+                "place: {:?} def in stmt:{:?} {:?}",
+                key,
+                self.oprs[value].get_type_name(),
+                self.oprs[value].get_instruction()
+            );
+        }
+    }
+    fn print_compusemap(
+        &self,
+        component: &HashSet<&'tcx Place<'tcx>>,
+        comp_use_map: &HashMap<&'tcx Place<'tcx>, HashSet<usize>>,
+    ) {
+        for (key, value) in comp_use_map.clone() {
+            if component.contains(key) {
+                for v in value {
+                    println!(
+                        "place: {:?} use in stmt:{:?} {:?}",
+                        key,
+                        self.oprs[v].get_type_name(),
+                        self.oprs[v].get_instruction()
+                    );
+                }
+            }
+        }
+    }
+    fn print_usemap(&self) {
+        for (key, value) in self.usemap.clone() {
+            for v in value {
+                println!(
+                    "place: {:?} use in stmt:{:?} {:?}",
+                    key,
+                    self.oprs[v].get_type_name(),
+                    self.oprs[v].get_instruction()
+                );
+            }
+        }
+    }
     pub fn create_random_place(&mut self) -> Place<'tcx> {
-        // 随机生成一个新的 Local 值
         let mut rng = rand::rng();
-        let random_local = Local::from_usize(rng.random_range(10000..100000)); // 假设 Local 的范围是 0 到 99
-
-        // 创建一个新的 Place 值，使用随机生成的 Local 和空的投影列表
+        let random_local = Local::from_usize(rng.random_range(10000..100000));
         let place = Place {
             local: random_local,
             projection: ty::List::empty(),
@@ -84,66 +140,19 @@ where
         self.inst_rand_place_set.push(place);
         place
     }
-    pub fn add_varnode(&mut self, v: Place<'tcx>) -> &VarNode<'tcx, T> {
-        // 如果变量已存在，则直接返回
-
-        // 插入新的 VarNode
+    pub fn add_varnode(&mut self, v: &'tcx Place<'tcx>) -> &mut VarNode<'tcx, T> {
         let node = VarNode::new(v);
-        // 先进行不可变借用，确保没有冲突
         let node_ref: &mut VarNode<'tcx, T> = self.vars.entry(v).or_insert(node);
-
-        // 确保 usemap 也更新
         self.usemap.entry(v).or_insert(HashSet::new());
 
         node_ref
     }
-    pub fn add_varnode_inst(&mut self, inst: &'tcx Statement<'tcx>) -> Place<'tcx> {
-        let inst_rand_place: Place<'tcx> = self.create_random_place();
-        // let place_ref: &'tcx Place<'tcx> = self.inst_rand_place_set.last().unwrap();
 
-        // let place_ref = unsafe {
-        //     // 强制转换为更长的生命周期
-        //     &*(self.inst_rand_place_set.last().unwrap() as *const Place<'tcx>)
-        // };
-        let node = VarNode::new(inst_rand_place);
-        let node_ref = self.vars.entry(inst_rand_place).or_insert(node);
-
-        // 确保 usemap 也更新
-        self.usemap.entry(inst_rand_place).or_insert(HashSet::new());
-
-        inst_rand_place
-    }
-    // pub fn get_oprs(&self) -> &GenOprs {
-    //     &self.oprs
-    // }
-
-    // pub fn get_defmap(&self) -> &DefMap {
-    //     &self.defmap
-    // }
-
-    // pub fn get_usemap(&self) -> &UseMap {
-    //     &self.usemap
-    // }
-
-    // pub fn build_graph(&self, body: &Body) -> ConstraintGraph {
-    //     let mut graph = ConstraintGraph::new();
-    //     let basic_blocks = &body.basic_blocks;
-    //     for basic_block_data in basic_blocks.iter() {
-    //         for statement in basic_block_data.statements.iter() {
-    //             graph.add_stat_to_graph(&statement.kind);
-    //         }
-    //         if let Some(terminator) = &basic_block_data.terminator {
-    //             graph.add_terminator_to_graph(&terminator.kind);
-    //         }
-    //     }
-    //     graph
-    // }
     pub fn build_graph(&mut self, body: &'tcx Body<'tcx>) {
         print!("====Building graph====\n");
         self.build_value_maps(body);
         print!("varnodes{:?}\n", self.vars);
-        print!("vbm{:?}\n", self.values_branchmap);
-
+        self.print_values_branchmap();
         print!("====build_operations====\n");
 
         for block in body.basic_blocks.indices() {
@@ -151,14 +160,14 @@ where
             // Traverse statements
 
             for statement in block_data.statements.iter() {
-                self.build_operations(statement);
+                self.build_operations(statement, block);
             }
         }
 
-        print!("varnodes{:?}\n", self.vars);
-        print!("oprs{:?}\n", self.oprs);
-        print!("defmap{:?}\n", self.defmap);
-        print!("usemap{:?}\n", self.usemap);
+        print!("len {:?} varnodes{:?}\n", self.vars.len(), self.vars);
+        print!("len {:?} oprs{:?}\n", self.oprs.len(), self.oprs);
+        self.print_defmap();
+        self.print_usemap();
         print!("end\n");
     }
 
@@ -205,7 +214,7 @@ where
                     (Some(c1), Some(c2)) => {}
                     (Some(c), None) | (None, Some(c)) => {
                         let const_in_left: bool;
-                        let variable: Place<'tcx>;
+                        let variable;
                         if const_op1.is_some() {
                             const_in_left = true;
                             variable = match op2 {
@@ -219,30 +228,18 @@ where
                                 _ => panic!("Expected a place"),
                             };
                         }
-                        // 此处应根据T进行选取，设定为scalarInt
-                        self.add_varnode(variable.clone());
+                        self.add_varnode(variable);
                         print!("add_vbm_varnode{:?}\n", variable.clone());
 
                         // let value = c.const_.try_to_scalar_int().unwrap();
-                        let value  = self.convert_const(&c.const_).unwrap();
-                        let const_range = Range::new(
-                            value.clone(),
-                            value.clone(),
-                            RangeType::Regular,
-                        );
+                        let value = Self::convert_const(&c.const_).unwrap();
+                        let const_range =
+                            Range::new(value.clone(), value.clone(), RangeType::Unknown);
 
-                        let true_range = self.apply_comparison(
-                            value.clone(),
-                            cmp_op,
-                            true,
-                            const_in_left,
-                        );
-                        let false_range = self.apply_comparison(
-                            value.clone(),
-                            cmp_op,
-                            false,
-                            const_in_left,
-                        );
+                        let true_range =
+                            self.apply_comparison(value.clone(), cmp_op, true, const_in_left);
+                        let false_range =
+                            self.apply_comparison(value.clone(), cmp_op, false, const_in_left);
                         let target_vec = targets.all_targets();
                         let vbm = ValueBranchMap::new(
                             variable,
@@ -251,12 +248,10 @@ where
                             IntervalType::Basic(BasicInterval::new(true_range)),
                             IntervalType::Basic(BasicInterval::new(false_range)),
                         );
-                        self.values_branchmap.insert(place.clone(), vbm);
+                        self.values_branchmap.insert(&place, vbm);
                     }
                     (None, None) => {
-                        // 两个变量之间的比较
-
-                        let CR = Range::new(T::min_value(), T::max_value(), RangeType::Regular);
+                        let CR = Range::new(T::min_value(), T::max_value(), RangeType::Unknown);
 
                         let p1 = match op1 {
                             Operand::Copy(p) | Operand::Move(p) => p,
@@ -267,10 +262,10 @@ where
                             _ => panic!("Expected a place"),
                         };
                         let target_vec = targets.all_targets();
-                        self.add_varnode(p1.clone());
+                        self.add_varnode(&p1);
                         print!("add_vbm_varnode{:?}\n", p1.clone());
 
-                        self.add_varnode(p2.clone());
+                        self.add_varnode(&p2);
                         print!("add_vbm_varnode{:?}\n", p2.clone());
 
                         let STOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, true));
@@ -281,8 +276,8 @@ where
                             ValueBranchMap::new(p1, &target_vec[0], &target_vec[1], STOp1, SFOp1);
                         let vbm_2 =
                             ValueBranchMap::new(p2, &target_vec[0], &target_vec[1], STOp2, SFOp2);
-                        self.values_branchmap.insert(p1, vbm_1);
-                        self.values_branchmap.insert(p2, vbm_2);
+                        self.values_branchmap.insert(&p1, vbm_1);
+                        self.values_branchmap.insert(&p2, vbm_2);
                     }
                 }
             };
@@ -290,10 +285,10 @@ where
     }
 
     fn extract_condition(
-        &self,
-        place: &Place<'tcx>,
-        switch_block: &BasicBlockData<'tcx>,
-    ) -> Option<(Operand<'tcx>, Operand<'tcx>, BinOp)> {
+        &mut self,
+        place: &'tcx Place<'tcx>,
+        switch_block: &'tcx BasicBlockData<'tcx>,
+    ) -> Option<(&'tcx Operand<'tcx>, &'tcx Operand<'tcx>, BinOp)> {
         for stmt in &switch_block.statements {
             if let StatementKind::Assign(box (lhs, Rvalue::BinaryOp(bin_op, box (op1, op2)))) =
                 &stmt.kind
@@ -321,53 +316,14 @@ where
                             }
                         }
                     }
-                    return Some((return_op1.clone(), return_op2.clone(), *bin_op));
+                    return Some((return_op1, return_op2, *bin_op));
                 }
             }
         }
         None
     }
-    // pub fn calculate_ranges(
-    //     &self,
-    //     op1: &Operand<'tcx>,
-    //     op2: &Operand<'tcx>,
-    //     cmp_op: BinOp,
-    // ) -> (Option<(i128, i128)>, Option<(i128, i128)>) {
-    //     // 检查操作数是否为常量
-    //     let const_op1 = op1.constant();
-    //     let const_op2 = op2.constant();
 
-    //     match (const_op1, const_op2) {
-    //         (Some(c1), Some(c2)) => {}
-    //         (Some(c), None) | (None, Some(c)) => {
-    //             let const_in_left: bool;
-    //             if const_op1.is_some() {
-    //                 const_in_left = true;
-    //             } else {
-    //                 const_in_left = false;
-    //             }
-    //             // 此处应根据T进行选取，设定为scalarInt
-    //             let const_range = Range::new(c.const_.try_to_scalar().unwrap());
-
-    //             let true_range = self.apply_comparison(const_range, cmp_op, true, const_in_left);
-    //             let false_range = self.apply_comparison(const_range, cmp_op, false, const_in_left);
-
-    //             (true_range, false_range)
-    //         }
-    //         (None, None) => {
-    //             // 两个变量之间的比较
-    //             let variable_range1 = Range::new(UserType::new());
-    //             let variable_range2 = Range::new(UserType::new());
-    //             let true_range =
-    //                 self.apply_comparison(variable_range1, variable_range2, cmp_op, true);
-    //             let false_range =
-    //                 self.apply_comparison(variable_range1, variable_range2, cmp_op, false);
-    //             (true_range, false_range)
-    //         }
-    //     }
-    // }
-
-    fn apply_comparison<U: PartialOrd + Clone + Bounded>(
+    fn apply_comparison<U: IntervalArithmetic>(
         &self,
         constant: U,
         cmp_op: BinOp,
@@ -377,41 +333,41 @@ where
         match cmp_op {
             BinOp::Lt => {
                 if is_true_branch ^ const_in_left {
-                    Range::new(U::min_value(), constant, RangeType::Regular)
+                    Range::new(U::min_value(), constant, RangeType::Unknown)
                 } else {
-                    Range::new(constant, U::max_value(), RangeType::Regular)
+                    Range::new(constant, U::max_value(), RangeType::Unknown)
                 }
             }
 
             BinOp::Le => {
                 if is_true_branch ^ const_in_left {
-                    Range::new(U::min_value(), constant, RangeType::Regular)
+                    Range::new(U::min_value(), constant, RangeType::Unknown)
                 } else {
-                    Range::new(constant, U::max_value(), RangeType::Regular)
+                    Range::new(constant, U::max_value(), RangeType::Unknown)
                 }
             }
 
             BinOp::Gt => {
                 if is_true_branch ^ const_in_left {
-                    Range::new(U::min_value(), constant, RangeType::Regular)
+                    Range::new(U::min_value(), constant, RangeType::Unknown)
                 } else {
-                    Range::new(constant, U::max_value(), RangeType::Regular)
+                    Range::new(constant, U::max_value(), RangeType::Unknown)
                 }
             }
 
             BinOp::Ge => {
                 if is_true_branch ^ const_in_left {
-                    Range::new(U::min_value(), constant, RangeType::Regular)
+                    Range::new(U::min_value(), constant, RangeType::Unknown)
                 } else {
-                    Range::new(constant, U::max_value(), RangeType::Regular)
+                    Range::new(constant, U::max_value(), RangeType::Unknown)
                 }
             }
 
             BinOp::Eq => {
                 if is_true_branch ^ const_in_left {
-                    Range::new(U::min_value(), constant, RangeType::Regular)
+                    Range::new(U::min_value(), constant, RangeType::Unknown)
                 } else {
-                    Range::new(constant, U::max_value(), RangeType::Regular)
+                    Range::new(constant, U::max_value(), RangeType::Unknown)
                 }
             }
 
@@ -424,7 +380,6 @@ where
             "Building value map for Goto in block {:?} targeting block {:?}",
             block_index, target
         );
-        // 在这里实现具体的 Goto 处理逻辑
     }
     pub fn build_varnodes(&mut self) {
         // Builds VarNodes
@@ -433,54 +388,82 @@ where
             node.init(is_undefined);
         }
     }
-    pub fn build_operations(&mut self, inst: &'tcx Statement<'tcx>) {
-        // Handle binary instructions
-        if let StatementKind::Assign(box (place, rvalue)) = &inst.kind {
-            match rvalue {
-                Rvalue::BinaryOp(op, box (op1, op2)) => {
-                    match op {
-                        // 加减乘除和取余（含 unchecked 和 overflow 版本）
-                        BinOp::Add
-                        | BinOp::Sub
-                        | BinOp::Mul
-                        | BinOp::Div
-                        | BinOp::Rem
-                        | BinOp::AddUnchecked => {
-                            self.add_binary_op(inst, op1, op2);
-                        }
-                        BinOp::AddWithOverflow => {
-                            self.add_binary_op(inst, op1, op2);
-                        }
-                        BinOp::SubUnchecked => {
-                            self.add_binary_op(inst, op1, op2);
-                        }
-                        BinOp::SubWithOverflow => {
-                            self.add_binary_op(inst, op1, op2);
-                        }
-                        BinOp::MulUnchecked => {
-                            self.add_binary_op(inst, op1, op2);
-                        }
-                        BinOp::MulWithOverflow => {
-                            self.add_binary_op(inst, op1, op2);
-                        }
-
-                        // 其他运算
-                        _ => {}
+    pub fn build_symbolic_intersect_map(&mut self) {
+        for i in 0..self.oprs.len() {
+            if let BasicOpKind::Essa(essaop) = &self.oprs[i] {
+                if let IntervalType::Symb(symbi) = essaop.get_intersect() {
+                    let v = symbi.get_bound();
+                    self.symbmap.entry(v).or_insert_with(HashSet::new).insert(i);
+                    println!("sym_map insert {:?} {:?}\n", v, essaop);
+                }
+            }
+        }
+    }
+    pub fn build_use_map(
+        &mut self,
+        component: &HashSet<&'tcx Place<'tcx>>,
+    ) -> HashMap<&'tcx Place<'tcx>, HashSet<usize>> {
+        // Builds use map
+        let mut comp_use_map = HashMap::new();
+        for &place in component {
+            if let Some(uses) = self.usemap.get(place) {
+                for op in uses.iter() {
+                    let sink = self.oprs[*op].get_sink();
+                    if component.contains(&sink) {
+                        comp_use_map
+                            .entry(sink)
+                            .or_insert_with(HashSet::new)
+                            .insert(*op);
                     }
                 }
+            }
+        }
+
+        self.print_compusemap(component, &comp_use_map);
+        comp_use_map
+    }
+    pub fn build_operations(&mut self, inst: &'tcx Statement<'tcx>, block: BasicBlock) {
+        if let StatementKind::Assign(box (sink, rvalue)) = &inst.kind {
+            match rvalue {
+                Rvalue::BinaryOp(op, box (op1, op2)) => match op {
+                    BinOp::Add
+                    | BinOp::Sub
+                    | BinOp::Mul
+                    | BinOp::Div
+                    | BinOp::Rem
+                    | BinOp::AddUnchecked => {
+                        self.add_binary_op(sink, inst, op1, op2);
+                    }
+                    BinOp::AddWithOverflow => {
+                        self.add_binary_op(sink, inst, op1, op2);
+                    }
+                    BinOp::SubUnchecked => {
+                        self.add_binary_op(sink, inst, op1, op2);
+                    }
+                    BinOp::SubWithOverflow => {
+                        self.add_binary_op(sink, inst, op1, op2);
+                    }
+                    BinOp::MulUnchecked => {
+                        self.add_binary_op(sink, inst, op1, op2);
+                    }
+                    BinOp::MulWithOverflow => {
+                        self.add_binary_op(sink, inst, op1, op2);
+                    }
+
+                    _ => {}
+                },
                 Rvalue::UnaryOp(UnOp, op) => {
-                    self.add_unary_op(inst, op);
+                    self.add_unary_op(sink, inst, op);
                 }
                 Rvalue::Aggregate(kind, operends) => {
-                    // 处理聚合类型的 Rvalue
                     match **kind {
                         AggregateKind::Adt(def_id, _, _, _, _) => {
                             if def_id == self.essa {
-                                self.add_essa_op(inst, operends);
+                                self.add_essa_op(sink, inst, operends, block);
                                 // println!("Adt{:?}\n", operends);
                             }
                             if def_id == self.ssa {
-                                self.add_ssa_op(inst, operends);
+                                self.add_ssa_op(sink, inst, operends);
                                 // println!("Adt{:?}\n", operends);
                             }
                         }
@@ -488,52 +471,37 @@ where
                     }
                 }
                 Rvalue::Use(operend) => {
-                    // 处理使用操作数的 Rvalue
-                    match operend {
-                        Operand::Copy(place) | Operand::Move(place) => {
-
-                            self.add_use_op(inst, operend);
-
-                        }
-                        Operand::Constant(_) => {
-                            // 处理常量操作数
-                            // println!("Constant{:?}\n", operend);
-                        }
-                    }
+                    self.add_use_op(sink, inst, operend);
                 }
-                _ => {
-                    // 处理其他类型的 Rvalue
-                    // println!("Unsupported Rvalue: {:?}", rvalue);
-                }
+                _ => {}
             }
         }
     }
     fn add_ssa_op(
         &mut self,
+        sink: &'tcx Place<'tcx>,
+
         inst: &'tcx Statement<'tcx>,
-        operands: &IndexVec<FieldIdx, Operand<'tcx>>,
+        operands: &'tcx IndexVec<FieldIdx, Operand<'tcx>>,
     ) {
         print!("ssa_op{:?}\n", inst);
-        self.add_varnode_inst(inst);
 
-        let sink = self.add_varnode_inst(inst);
+        let sink_node = self.add_varnode(sink);
+        println!("addsink_in_ssa_op{:?}\n", sink_node);
+
         let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
-        let mut phiop = PhiOp::new(BI, sink, inst, 0);
-                let bop_index = self.oprs.len();
-
+        let mut phiop = PhiOp::new(IntervalType::Basic(BI), sink, inst, 0);
+        let bop_index = self.oprs.len();
         for i in 0..operands.len() {
-            let source = match operands[i.into()] {
-                Operand::Copy(place) | Operand::Move(place) => Some(place.clone()),
-                _ => None, // 不处理 Constant
+            let source = match &operands[i.into()] {
+                Operand::Copy(place) | Operand::Move(place) => Some(place),
+                _ => None,
             };
             if let Some(source) = source {
-                self.add_varnode(source.clone());
-                phiop.add_source(source.clone());
+                self.add_varnode(source);
+                phiop.add_source(source);
                 println!("addvar_in_ssa_op{:?}\n", source);
-                            self.usemap
-                .entry(source)
-                .or_default()
-                .insert(bop_index);
+                self.usemap.entry(source).or_default().insert(bop_index);
             }
         }
         // Insert the operation in the graph.
@@ -546,75 +514,134 @@ where
     }
     fn add_use_op(
         &mut self,
-        inst: &'tcx Statement<'tcx>, op: &'tcx Operand<'tcx>
+        sink: &'tcx Place<'tcx>,
+        inst: &'tcx Statement<'tcx>,
+        op: &'tcx Operand<'tcx>,
     ) {
         print!("use_op{:?}\n", inst);
-        self.add_varnode_inst(inst);
 
-        let sink = self.add_varnode_inst(inst);
+        let sink_node = self.add_varnode(sink);
+        println!("addsink_in_use_op{:?}\n", sink_node);
 
         let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
-        let source = match op {
-            Operand::Copy(place) | Operand::Move(place) => Some(place.clone()),
-            _ => None, // 不处理 Constant
-        };
-        println!("addvar_in_use_op{:?}\n", source.unwrap());
+        let mut source: Option<&'tcx Place<'tcx>> = None;
 
-        let essaop = EssaOp::new(BI, sink, inst, source.unwrap(), 0);
-        // Insert the operation in the graph.
-        let bop_index = self.oprs.len();
+        match op {
+            Operand::Copy(place) | Operand::Move(place) => {
+                source = Some(place);
+                if let Some(source) = source {
+                    println!("addvar_in_use_op{:?}\n", source);
 
-        self.oprs.push(BasicOpKind::Essa(essaop));
-        // Insert this definition in defmap
+                    let useop = UseOp::new(IntervalType::Basic(BI), sink, inst, source, 0);
+                    // Insert the operation in the graph.
+                    let bop_index = self.oprs.len();
 
-        self.defmap.insert(sink, bop_index);
+                    self.oprs.push(BasicOpKind::Use(useop));
+                    // Insert this definition in defmap
+                    self.usemap.entry(source).or_default().insert(bop_index);
+
+                    self.defmap.insert(sink, bop_index);
+                }
+            }
+            Operand::Constant(constant) => {
+                print!("add_constant_op{:?}\n", inst);
+                let Some(c) = op.constant() else {
+                    return;
+                };
+                let value = Self::convert_const(&c.const_).unwrap();
+
+                sink_node.set_range(Range::new(value.clone(), value.clone(), RangeType::Regular));
+            }
+        }
     }
     fn add_essa_op(
         &mut self,
+        sink: &'tcx Place<'tcx>,
+
         inst: &'tcx Statement<'tcx>,
-        operands: &IndexVec<FieldIdx, Operand<'tcx>>,
+        operands: &'tcx IndexVec<FieldIdx, Operand<'tcx>>,
+        block: BasicBlock,
     ) {
         print!("essa_op{:?}\n", inst);
-        self.add_varnode_inst(inst);
+        let sink_node = self.add_varnode(sink);
+        println!("addsink_in_essa_op{:?}\n", sink_node);
 
-        let sink = self.add_varnode_inst(inst);
-
-        let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
+        // let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
         let loc_1: usize = 0;
-        let source = match operands[loc_1.into()] {
-            Operand::Copy(place) | Operand::Move(place) => Some(place.clone()),
-            _ => None, // 不处理 Constant
+        let loc_2: usize = 1;
+        let source1 = match &operands[loc_1.into()] {
+            Operand::Copy(place) | Operand::Move(place) => Some(place),
+            _ => None,
         };
-        println!("addvar_in_essa_op{:?}\n", source.unwrap());
-
-        let essaop = EssaOp::new(BI, sink, inst, source.unwrap(), 0);
-        // Insert the operation in the graph.
+        println!("addvar_in_essa_op{:?}\n", source1.unwrap());
+        let op = &operands[loc_2.into()];
         let bop_index = self.oprs.len();
+
+        let BI: IntervalType<'_, T>;
+        if let Operand::Constant(c) = op {
+            BI = IntervalType::Basic(BasicInterval::new(Range::default(T::min_value())));
+            self.usemap
+                .entry(source1.unwrap())
+                .or_default()
+                .insert(bop_index);
+            println!("addvar_in_essa_op{:?}in \n", source1.unwrap());
+        } else {
+            let vbm = self.values_branchmap.get(source1.unwrap()).unwrap();
+            if block == *vbm.get_bb_true() {
+                println!("essa_op true branch{:?}\n", block);
+                BI = vbm.get_itv_t();
+            } else {
+                println!("essa_op false branch{:?}\n", block);
+                BI = vbm.get_itv_f();
+            }
+            let source2 = match op {
+                Operand::Copy(place) | Operand::Move(place) => Some(place),
+                _ => None,
+            };
+            self.usemap
+                .entry(source2.unwrap())
+                .or_default()
+                .insert(bop_index);
+            println!("addvar_in_essa_op{:?}in \n", source2.unwrap());
+        }
+
+        let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0);
+        // Insert the operation in the graph.
 
         self.oprs.push(BasicOpKind::Essa(essaop));
         // Insert this definition in defmap
+        // self.usemap
+        //     .entry(source1.unwrap())
+        //     .or_default()
+        //     .insert(bop_index);
 
         self.defmap.insert(sink, bop_index);
     }
-    fn add_unary_op(&mut self, inst: &'tcx Statement<'tcx>, op: &'tcx Operand<'tcx>) {
+    fn add_unary_op(
+        &mut self,
+        sink: &'tcx Place<'tcx>,
+        inst: &'tcx Statement<'tcx>,
+        op: &'tcx Operand<'tcx>,
+    ) {
         print!("unary_op{:?}\n", inst);
-        self.add_varnode_inst(inst);
 
-        let sink = self.add_varnode_inst(inst);
+        let sink_node = self.add_varnode(sink);
+        println!("addsink_in_unary_op{:?}\n", sink_node);
 
         let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
         let loc_1: usize = 0;
         let source = match op {
-            Operand::Copy(place) | Operand::Move(place) => Some(place.clone()),
-            _ => None, // 不处理 Constant
+            Operand::Copy(place) | Operand::Move(place) => Some(place),
+            _ => None,
         };
         println!("addvar_in_unary_op{:?}\n", source.unwrap());
+        self.add_varnode(source.unwrap());
 
-        let essaop = EssaOp::new(BI, sink, inst, source.unwrap(), 0);
+        let unaryop = UnaryOp::new(IntervalType::Basic(BI), sink, inst, source.unwrap(), 0);
         // Insert the operation in the graph.
         let bop_index = self.oprs.len();
 
-        self.oprs.push(BasicOpKind::Essa(essaop));
+        self.oprs.push(BasicOpKind::Unary(unaryop));
         // Insert this definition in defmap
 
         self.defmap.insert(sink, bop_index);
@@ -622,54 +649,72 @@ where
 
     fn add_binary_op(
         &mut self,
+        sink: &'tcx Place<'tcx>,
         inst: &'tcx Statement<'tcx>,
         op1: &'tcx Operand<'tcx>,
         op2: &'tcx Operand<'tcx>,
     ) {
         print!("binary_op{:?}\n", inst);
-        self.add_varnode_inst(inst);
-
-        let sink = self.add_varnode_inst(inst);
+        let sink_node = self.add_varnode(sink);
+        println!("addsink_in_binary_op{:?}\n", sink_node);
+        let bop_index = self.oprs.len();
+        let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
 
         let source1_place = match op1 {
             Operand::Copy(place) | Operand::Move(place) => {
-                self.add_varnode(place.clone()); // 构建 VarNode 图
-                        println!("addvar_in_binary_op{:?}\n", place);
+                self.add_varnode(place);
+                println!("addvar_in_binary_op{:?}\n", place);
 
-                Some(place.clone())
-            }
-            Operand::Constant(_) => None, // 先忽略
-        };
-
-        let source2_place = match op2 {
-            Operand::Copy(place) | Operand::Move(place) => {
-                self.add_varnode(place.clone());
-                                        println!("addvar_in_binary_op{:?}\n", place);
-
-                Some(place.clone())
+                Some(place)
             }
             Operand::Constant(_) => None,
         };
-        let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
-        let BOP = BinaryOp::new(BI, sink, inst, source1_place, source2_place, 0);
-        let bop_index = self.oprs.len();
 
-        self.oprs.push(BasicOpKind::Binary(BOP));
-        // let bop_ref = unsafe { &*(self.oprs.last().unwrap() as *const BasicOp<'tcx, T>) };
-        self.defmap.insert(sink, bop_index);
-        if let Some(place) = source1_place {
-            self.usemap
-                .entry(place.clone())
-                .or_default()
-                .insert(bop_index);
-        }
+        match op2 {
+            Operand::Copy(place) | Operand::Move(place) => {
+                self.add_varnode(place);
+                println!("addvar_in_binary_op{:?}\n", place);
 
-        if let Some(place) = source2_place {
-            self.usemap
-                .entry(place.clone())
-                .or_default()
-                .insert(bop_index);
-        }
+                let source2_place = Some(place);
+                let BOP = BinaryOp::new(
+                    IntervalType::Basic(BI),
+                    sink,
+                    inst,
+                    source1_place,
+                    source2_place,
+                    0,
+                    None,
+                );
+                self.oprs.push(BasicOpKind::Binary(BOP));
+                // let bop_ref = unsafe { &*(self.oprs.last().unwrap() as *const BasicOp<'tcx, T>) };
+                self.defmap.insert(sink, bop_index);
+                if let Some(place) = source1_place {
+                    self.usemap.entry(place).or_default().insert(bop_index);
+                }
+
+                if let Some(place) = source2_place {
+                    self.usemap.entry(place).or_default().insert(bop_index);
+                }
+            }
+            Operand::Constant(c) => {
+                let const_value = Self::convert_const(&c.const_).unwrap();
+                let BOP = BinaryOp::new(
+                    IntervalType::Basic(BI),
+                    sink,
+                    inst,
+                    source1_place,
+                    None,
+                    0,
+                    Some(const_value),
+                );
+                self.oprs.push(BasicOpKind::Binary(BOP));
+                // let bop_ref = unsafe { &*(self.oprs.last().unwrap() as *const BasicOp<'tcx, T>) };
+                self.defmap.insert(sink, bop_index);
+                if let Some(place) = source1_place {
+                    self.usemap.entry(place).or_default().insert(bop_index);
+                }
+            }
+        };
 
         // print!("varnodes{:?}\n", self.vars);
         // print!("defmap{:?}\n", self.defmap);
@@ -677,166 +722,379 @@ where
         // print!("{:?}add_binary_op{:?}\n", inst,sink);
         // ...
     }
+    fn fix_intersects(&mut self, component: &HashSet<&'tcx Place<'tcx>>) {
+        // 处理交集
+        for &place in component.iter() {
+            let node = self.vars.get(place).unwrap();
+            // node.fix_intersects();
 
-    // pub fn find_intervals(&mut self) {
-    //     // 构建符号交集映射
-    //     self.build_symbolic_intersect_map();
-
-    //     // 查找强连通分量（SCC）
-    //     let scc_list = Nuutila::new(&self.vars, &self.usemap, &self.symbmap,false);
-    //     self.num_sccs += scc_list.worklist.len();
-
-    //     // 遍历每个 SCC
-    //     for component in scc_list.components() {
-    //         if component.len() == 1 {
-    //             // 处理单节点的 SCC
-    //             self.num_alone_sccs += 1;
-    //             self.fix_intersects(&component);
-
-    //             let var = component.iter().next().unwrap();
-    //             if var.get_range().is_unknown() {
-    //                 var.set_range(allue {
-    //                     min: i32::MIN,
-    //                     max: i32::MAX,
-    //                 });
-    //             }
-    //         } else {
-    //             // 更新最大 SCC 大小
-    //             if component.len() > self.size_max_scc {
-    //                 self.size_max_scc = component.len();
-    //             }
-
-    //             // 为该 SCC 构建使用映射
-    //             let comp_use_map = self.build_use_map(&component);
-
-    //             // 获取 SCC 的入口点
-    //             let mut entry_points = HashSet::new();
-    //             self.generate_entry_points(&component, &mut entry_points);
-
-    //             // 固定点迭代，更新范围
-    //             self.pre_update(&comp_use_map, &entry_points);
-    //             self.fix_intersects(&component);
-
-    //             // 为未知范围的变量设置默认范围
-    //             for var in &component {
-    //                 if var.get_range().is_unknown() {
-    //                     var.set_range(Range {
-    //                         min: i32::MIN,
-    //                         max: i32::MAX,
-    //                     });
-    //                 }
-    //             }
-
-    //             // 二次迭代，更新活动变量
-    //             let mut active_vars = HashSet::new();
-    //             self.generate_active_vars(&component, &mut active_vars);
-    //             self.pos_update(&comp_use_map, &active_vars, &component);
-    //         }
-
-    //         // 将结果传播到下一个 SCC
-    //         self.propagate_to_next_scc(&component);
-    //     }
-    // }
-
-    // 假设的辅助方法定义
-    fn build_symbolic_intersect_map(&self) {
-        // 构建符号交集映射
+            if let Some(sit) = self.symbmap.get_mut(place) {
+                for &op in sit.iter() {
+                    let op = &mut self.oprs[op];
+                    op.op_fix_intersects(node);
+                }
+            }
+        }
     }
-    // pub fn find_intervals(&mut self) {
-    //     // 构建符号交集映射（类似 buildSymbolicIntersectMap）
-    //     self.build_symbolic_intersect_map();
-    //     let num_sccs = 0;
-    //     let num_alone_sccs = 0;
-    //     let size_max_scc =1023;
-    //     // 构造 SCC 列表
-    //     let mut scc_list = Nuutila::new(&self.vars, &self.usemap, &self.symbmap,true);
+    pub fn widen(&mut self, op: usize) -> bool {
+        // use crate::range_util::{get_first_less_from_vector, get_first_greater_from_vector};
 
-    //     // 统计 SCC 数量
-    //     num_sccs += scc_list.worklist.len();
+        // assert!(!constant_vector.is_empty(), "Invalid constant vector");
+        let op  = &mut self.oprs[op];
+        let old_interval = op.get_intersect().get_range().clone();
+        let new_interval = op.eval(&self.vars);
 
-    //     // 遍历每个 SCC
-    //     for scc_id in scc_list.iter() {
-    //         let component = scc_list.components[scc_id].clone(); // SmallPtrSet<VarNode*, 32>
+        let old_lower = old_interval.get_lower();
+        let old_upper = old_interval.get_upper();
+        let new_lower = new_interval.get_lower();
+        let new_upper = new_interval.get_upper();
 
-    //         if component.len() == 1 {
-    //             num_alone_sccs += 1;
-    //             self.fix_intersects(&component);
+        // let nlconstant = get_first_less_from_vector(constant_vector, new_lower);
+        // let nuconstant = get_first_greater_from_vector(constant_vector, new_upper);
+        // let nlconstant = constant_vector
+        //     .iter()
+        //     .find(|&&c| c <= new_lower)
+        //     .cloned()
+        //     .unwrap_or(T::min_value());
+        // let nuconstant = constant_vector
+        //     .iter()
+        //     .find(|&&c| c >= new_upper)
+        //     .cloned()
+        //     .unwrap_or(T::max_value());
+        let nlconstant = new_lower.clone();
+        let nuconstant = new_upper.clone();
+        let updated = if old_interval.is_unknown() {
+            new_interval
+        } else if new_lower < old_lower && new_upper > old_upper {
+            Range::new(nlconstant, nuconstant, RangeType::Regular)
+        } else if new_lower < old_lower {
+            Range::new(nlconstant, old_upper.clone(), RangeType::Regular)
+        } else if new_upper > old_upper {
+            Range::new(old_lower.clone(), nuconstant, RangeType::Regular)
+        } else {
+            old_interval.clone()
+        };
 
-    //             // let var = component.iter().next().unwrap();
-    //             // if var.get_range().is_unknown() {
-    //             //     var.set_range(Range::new(MIN, MAX));
-    //             // }
-    //         } else {
-    //             // 记录最大 SCC 尺寸
-    //             if component.len() > size_max_scc {
-    //                 size_max_scc = component.len();
-    //             }
+        op.set_intersect(updated.clone());
 
-    //             // 构建 UseMap
-    //             let comp_use_map = Self::build_usemap(&component);
+        let sink = op.get_sink();
+        let new_sink_interval = op.get_intersect().get_range().clone();
+        self.vars
+            .get_mut(sink)
+            .unwrap()
+            .set_range(new_sink_interval.clone());
+        println!(
+            "WIDEN::{:?}: {:?} -> {:?}",
+            sink, old_interval, new_sink_interval
+        );
 
-    //             // 找出入口点
-    //             let mut entry_points = SmallPtrSet::<&Value, 6>::default();
+        old_interval != new_sink_interval
+    }
+    pub fn narrow(&mut self, op: &mut BasicOpKind<'tcx, T>) -> bool {
+        let old_range = self.vars[op.get_sink()].get_range();
+        let o_lower = old_range.get_lower().clone();
+        let o_upper = old_range.get_upper().clone();
 
-    //             // 第一次固定点迭代前处理
-    //             self.generate_entry_points(&component, &mut entry_points);
-    //             self.pre_update(&comp_use_map, &entry_points);
-    //             self.fix_intersects(&component);
+        let new_range = op.eval(&self.vars);
+        let n_lower = new_range.get_lower().clone();
+        let n_upper = new_range.get_upper().clone();
 
-    //             // 修正尚未设定范围的 VarNode
-    //             for var in &component {
-    //                 if var.get_range().is_unknown() {
-    //                     var.set_range(Range::new(MIN, MAX));
-    //                 }
-    //             }
+        let mut has_changed = false;
+        let min = T::min_value();
+        let max = T::max_value();
 
-    //             // 第二次固定点迭代
-    //             let mut active_vars = SmallPtrSet::<&Value, 6>::default();
-    //             self.generate_active_vars(&component, &mut active_vars);
-    //             self.pos_update(&comp_use_map, &active_vars, &component);
-    //         }
+        let mut result_lower = o_lower.clone();
+        let mut result_upper = o_upper.clone();
 
-    //         // 将信息传播到下一组 SCC
-    //         self.propagate_to_next_scc(&component);
-    //     }
-    // }
+        if o_lower == min && n_lower != min {
+            result_lower = n_lower;
+            has_changed = true;
+        } else {
+            // let smin = o_lower.clone().min(n_lower.clone());
+            let smin = T::min_value();
+            if o_lower != smin {
+                result_lower = smin;
+                has_changed = true;
+            }
+        }
+
+        if o_upper == max && n_upper != max {
+            result_upper = n_upper;
+            has_changed = true;
+        } else {
+            // let smax = o_upper.clone().max(n_upper.clone());
+            let smax = T::max_value();
+            if o_upper != smax {
+                result_upper = smax;
+                has_changed = true;
+            }
+        }
+
+        if has_changed {
+            let new_sink_range = Range::new(
+                result_lower.clone(),
+                result_upper.clone(),
+                RangeType::Regular,
+            );
+            let sink_node = self.vars.get_mut(op.get_sink()).unwrap();
+            sink_node.set_range(new_sink_range.clone());
+
+            // println!(
+            //     "NARROW::{}: {:?} -> {:?}",
+            // ,
+            //     Range::new(o_lower, o_upper),
+            //     new_sink_range
+            // );
+        }
+
+        has_changed
+    }
+    fn pre_update(
+        &mut self,
+        comp_use_map: &HashMap<&'tcx Place<'tcx>, HashSet<usize>>,
+        entry_points: &HashSet<&'tcx Place<'tcx>>,
+    ) {
+        let mut worklist: Vec<&'tcx Place<'tcx>> = entry_points.iter().cloned().collect();
+        let mut visited: HashSet<&'tcx Place<'tcx>> = entry_points.clone();
+
+            while let Some(place) = worklist.pop() {
+            if let Some(op_set) = comp_use_map.get(place) {
+                for &op in op_set {
+                    if self.widen(op) {
+                        let sink = self.oprs[op].get_sink();
+                        // let sink_node = self.vars.get_mut(sink).unwrap();
+                        if visited.insert(sink) {
+                            worklist.push(sink);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn pos_update(
+        &mut self,
+        _comp_use_map: &HashMap<&'tcx Place<'tcx>, HashSet<usize>>,
+        _entry_points: &HashSet<&'tcx Place<'tcx>>,
+        _component: &HashSet<&'tcx Place<'tcx>>,
+    ) {
+        // TODO: Implement the logic for pre_update as needed.
+    }
+    fn generate_active_vars(
+        &mut self,
+        component: &HashSet<&'tcx Place<'tcx>>,
+        active_vars: &mut HashSet<&'tcx Place<'tcx>>,
+    ) {
+        for place in component {
+            let node = self.vars.get(place).unwrap();
+        }
+    }
+    fn generate_entry_points(
+        &mut self,
+        component: &HashSet<&'tcx Place<'tcx>>,
+        entry_points: &mut HashSet<&'tcx Place<'tcx>>,
+    ) {
+        for &place in component {
+            let op = self.defmap.get(place).unwrap();
+            // if let BasicOpKind::Essa(essaop) = &mut self.oprs[*op] {
+            //     if essaop.is_unresolved() {
+            //         let source = essaop.get_source();
+            //         let new_range = essaop.eval(&self.vars);
+            //         let sink_node = self.vars.get_mut(source).unwrap();
+            //         sink_node.set_range(new_range);
+            //     }
+            //     essaop.mark_resolved();
+            // }
+            if (!self.vars[place].get_range().is_unknown()) {
+                entry_points.insert(place);
+            }
+        }
+    }
+    fn propagate_to_next_scc(&mut self, component: &HashSet<&'tcx Place<'tcx>>) {
+        for &place in component.iter() {
+            let node = self.vars.get_mut(place).unwrap();
+            for &op in self.usemap.get(place).unwrap().iter() {
+                let op = &mut self.oprs[op];
+                let sink = op.get_sink();
+                let new_range = op.eval(&self.vars);
+                let sink_node = self.vars.get_mut(sink).unwrap();
+                println!(
+                    "component {:?} set {:?} to {:?} through{:?}\n",
+                    component,
+                    new_range,
+                    sink,
+                    op.get_instruction()
+                );
+                sink_node.set_range(new_range);
+
+                if let BasicOpKind::Essa(essaop) = op {
+                    if essaop.get_intersect().get_range().is_unknown() {
+                        essaop.mark_unresolved();
+                    }
+                }
+            }
+        }
+    }
+    pub fn find_intervals(&mut self) {
+        // 构建符号交集映射
+        self.build_symbolic_intersect_map();
+
+        // let scc_list = Nuutila::new(&self.vars, &self.usemap, &self.symbmap,false,&self.oprs);
+        // self.print_vars();
+        self.numSCCs = self.worklist.len();
+        let components: Vec<HashSet<&'tcx Place<'tcx>>> =
+            self.components.values().cloned().collect();
+        for component in components {
+            print!("===start component {:?}===\n", component);
+            if component.len() == 1 {
+                self.numAloneSCCs += 1;
+
+                self.fix_intersects(&component);
+
+                let variable: &Place<'tcx> = *component.iter().next().unwrap();
+                let varnode = self.vars.get_mut(variable).unwrap();
+                if varnode.get_range().is_unknown() {
+                    varnode.set_default();
+                }
+            } else {
+                // self.pre_update(&comp_use_map, &entry_points);
+                let comp_use_map = self.build_use_map(&component);
+                // build_constant_vec(&component, &self.oprs, &mut self.constant_vec);
+                let mut entry_points = HashSet::new();
+                // self.print_vars();
+
+                self.generate_entry_points(&component, &mut entry_points);
+                print!(
+                    "component {:?} entry_points{:?}  \n ",
+                    component, entry_points
+                );
+                self.pre_update(&comp_use_map, &entry_points);
+                // self.fix_intersects(&component);
+
+                for &variable in &component {
+                    let varnode = self.vars.get_mut(variable).unwrap();
+                    if varnode.get_range().is_unknown() {
+                        varnode.set_default();
+                    }
+                }
+
+                let mut active_vars = HashSet::new();
+                self.generate_active_vars(&component, &mut active_vars);
+                self.pos_update(&comp_use_map, &active_vars, &component);
+            }
+            self.propagate_to_next_scc(&component);
+        }
+    }
+
+    pub fn build_nuutila(&mut self, single: bool) {
+        print!("====Building graph====\n");
+
+        if single {
+        } else {
+            for place in self.vars.keys().copied() {
+                self.dfs.insert(place, -1);
+            }
+
+            // n.add_control_dependence_edges(, use_map, varNodes);
+
+            let places: Vec<_> = self.vars.keys().copied().collect();
+
+            for place in places {
+                if self.dfs[&place] < 0 {
+                    let mut stack = Vec::new();
+                    self.visit(place, &mut stack);
+                    print!("place{:?}\n", place);
+                }
+            }
+
+            // n.del_control_dependence_edges(use_map);
+        }
+        print!("components{:?}\n", self.components);
+        print!("worklist{:?}\n", self.worklist);
+        print!("dfs{:?}\n", self.dfs);
+    }
+    pub fn visit(&mut self, place: &'tcx Place<'tcx>, stack: &mut Vec<&'tcx Place<'tcx>>) {
+        self.dfs.entry(place).and_modify(|v| *v = self.index);
+        self.index += 1;
+        self.root.insert(place, place);
+        let uses = self.usemap.get(place).unwrap().clone();
+        for op in uses {
+            let name = self.oprs[op].get_sink();
+            print!("place {:?} get name{:?}\n", place, name);
+            if self.dfs.get(name).copied().unwrap_or(-1) < 0 {
+                self.visit(name, stack);
+            }
+
+            if (!self.in_component.contains(name)
+                && self.dfs[self.root[place]] >= self.dfs[self.root[name]])
+            {
+                *self.root.get_mut(place).unwrap() = self.root.get(name).copied().unwrap();
+
+                // let weq = self.root.get(place)
+            }
+        }
+
+        if self.root.get(place).copied().unwrap() == place {
+            self.worklist.push_back(place);
+
+            let mut scc = HashSet::new();
+            scc.insert(place);
+
+            self.in_component.insert(place);
+
+            while let Some(top) = stack.last() {
+                if self.dfs.get(top).copied().unwrap_or(-1) > self.dfs.get(place).copied().unwrap()
+                {
+                    let node = stack.pop().unwrap();
+                    self.in_component.insert(node);
+
+                    scc.insert(node);
+                } else {
+                    break;
+                }
+            }
+
+            self.components.insert(place, scc);
+        } else {
+            stack.push(place);
+        }
+    }
 }
-
-pub struct Nuutila<'tcx, T: PartialOrd + Clone + Bounded + Debug> {
+#[derive(Debug)]
+pub struct Nuutila<'tcx, T: IntervalArithmetic + Debug> {
     pub variables: &'tcx VarNodes<'tcx, T>,
     pub index: i32,
-    pub dfs: HashMap<Place<'tcx>, i32>,
-    pub root: HashMap<Place<'tcx>, Place<'tcx>>,
-    pub in_component: HashSet<Place<'tcx>>,
-    pub components: HashMap<Place<'tcx>, HashSet<&'tcx VarNode<'tcx, T>>>,
-    pub worklist: VecDeque<Place<'tcx>>,
+    pub dfs: HashMap<&'tcx Place<'tcx>, i32>,
+    pub root: HashMap<&'tcx Place<'tcx>, &'tcx Place<'tcx>>,
+    pub in_component: HashSet<&'tcx Place<'tcx>>,
+    pub components: HashMap<&'tcx Place<'tcx>, HashSet<&'tcx Place<'tcx>>>,
+    pub worklist: VecDeque<&'tcx Place<'tcx>>,
+    // pub oprs: &Vec<BasicOpKind<'tcx, T>>,
 }
 
 impl<'tcx, T> Nuutila<'tcx, T>
 where
-    T: PartialOrd + Clone + Bounded + From<ScalarInt> + Debug,
+    T: IntervalArithmetic + ConstConvert + Debug,
 {
-
     pub fn new(
         varNodes: &'tcx VarNodes<'tcx, T>,
-        use_map: &mut UseMap<'tcx>,
-        symb_map: &SymbMap<'tcx>,
+        use_map: &'tcx UseMap<'tcx>,
+        symb_map: &'tcx SymbMap<'tcx>,
         single: bool,
+        oprs: &'tcx Vec<BasicOpKind<'tcx, T>>,
     ) -> Self {
-        let mut n = Nuutila {
-            variables:varNodes,
+        let mut n: Nuutila<'_, T> = Nuutila {
+            variables: varNodes,
             index: 0,
             dfs: HashMap::new(),
             root: HashMap::new(),
             in_component: HashSet::new(),
             components: HashMap::new(),
             worklist: std::collections::VecDeque::new(),
-            // 如果你用到了 control_deps 字段
-            // control_deps: HashSet::new(),
+            // oprs:oprs
         };
 
         if single {
-            // 所有变量归入一个 SCC
             // let mut scc = HashSet::new();
             // for var_node in variables.values() {
             //     scc.insert(var_node.clone());
@@ -846,14 +1104,12 @@ where
             //     n.components.insert(place.clone(), scc.clone());
             // }
 
-            // // 任选一个 place 放入 worklist
             // if let Some((first_place, _)) = variables.iter().next() {
             //     n.worklist.push_back(first_place.clone());
             // }
         } else {
-            // 初始化 dfs 值
-            for place in n.variables.keys() {
-                n.dfs.insert(place.clone(), -1);
+            for place in n.variables.keys().copied() {
+                n.dfs.insert(place, -1);
             }
 
             n.add_control_dependence_edges(symb_map, use_map, varNodes);
@@ -861,100 +1117,81 @@ where
             for place in n.variables.keys() {
                 if n.dfs[place] < 0 {
                     let mut stack = Vec::new();
-                    n.visit(place, &mut stack, use_map);
+                    n.visit(place, &mut stack, use_map, oprs);
                 }
             }
 
-            n.del_control_dependence_edges(use_map);
+            // n.del_control_dependence_edges(use_map);
         }
 
         n
     }
 
-
-
-
     pub fn visit(
         &mut self,
-        place: &Place<'tcx>,
-        stack: &mut Vec<Place<'tcx>>,
-        use_map: &UseMap<'tcx>,
+        place: &'tcx Place<'tcx>,
+        stack: &mut Vec<&'tcx Place<'tcx>>,
+        use_map: &'tcx UseMap<'tcx>,
+        oprs: &'tcx Vec<BasicOpKind<'tcx, T>>,
     ) {
-        self.dfs.insert(place.clone(), self.index);
+        self.dfs.entry(place).and_modify(|v| *v = self.index);
         self.index += 1;
-        self.root.insert(place.clone(), place.clone());
+        self.root.insert(place, place);
 
-        // 访问所有使用该变量的 BasicOp（或指令）
-        // if let Some(uses) = use_map.get(place) {
-        //     for op in uses {
-        //         let name = op.sink().value();
+        if let Some(uses) = use_map.get(place) {
+            for op in uses {
+                let name = oprs[*op].get_sink();
 
-        //         // 初始化 dfs 值（如果尚未访问）
-        //         if self.dfs.get(name).copied().unwrap_or(-1) < 0 {
-        //             self.visit(name, stack, use_map);
-        //         }
+                if self.dfs.get(name).copied().unwrap_or(-1) < 0 {
+                    self.visit(name, stack, use_map, oprs);
+                }
 
-        //         // 如果 name 不在任何组件中，并且 root 更新
-        //         if !self.in_component.contains(name) {
-        //             let root_place = self.root.get(place).unwrap().clone();
-        //             let root_name = self.root.get(name).unwrap().clone();
+                if (!self.in_component.contains(name)
+                    && self.dfs[self.root[place]] >= self.dfs[self.root[name]])
+                {
+                    *self.root.get_mut(place).unwrap() = self.root.get(name).copied().unwrap();
 
-        //             let dfs_root_place = self.dfs.get(&root_place).copied().unwrap();
-        //             let dfs_root_name = self.dfs.get(&root_name).copied().unwrap();
+                    // let weq = self.root.get(place)
+                }
+            }
+        }
 
-        //             if dfs_root_place >= dfs_root_name {
-        //                 self.root.insert(place.clone(), root_name);
-        //             }
-        //         }
-        //     }
-        // }
+        if self.root.get(place).copied().unwrap() == place {
+            self.worklist.push_back(place);
 
-        // // 第二阶段：确定组件并构建 SCC
-        // if self.root.get(place) == Some(place) {
-        //     self.worklist.push_back(place.clone());
+            let mut scc = HashSet::new();
+            scc.insert(place);
 
-        //     let mut scc = HashSet::new();
-        //     if let Some(var_node) = self.variables.get(place) {
-        //         scc.insert(var_node.clone());
-        //     }
+            self.in_component.insert(place);
 
-        //     self.in_component.insert(place.clone());
+            while let Some(&top) = stack.last() {
+                if self.dfs.get(top).copied().unwrap_or(-1) > self.dfs.get(place).copied().unwrap()
+                {
+                    let node = stack.pop().unwrap();
+                    self.in_component.insert(node);
 
-        //     while let Some(top) = stack.last() {
-        //         if self.dfs.get(top).copied().unwrap_or(-1) > self.dfs.get(place).copied().unwrap() {
-        //             let node = stack.pop().unwrap();
-        //             self.in_component.insert(node.clone());
+                    scc.insert(node);
+                } else {
+                    break;
+                }
+            }
 
-        //             if let Some(var_node) = self.variables.get(&node) {
-        //                 scc.insert(var_node.clone());
-        //             }
-        //         } else {
-        //             break;
-        //         }
-        //     }
-
-        //     self.components.insert(place.clone(), scc);
-        // } else {
-        //     stack.push(place.clone());
-        // }
+            self.components.insert(place, scc);
+        } else {
+            stack.push(place);
+        }
     }
-
-
 
     pub fn add_control_dependence_edges(
         &mut self,
-        _symb_map: &SymbMap<'tcx>,
-        _use_map: &UseMap<'tcx>,
+        _symb_map: &'tcx SymbMap<'tcx>,
+        _use_map: &'tcx UseMap<'tcx>,
         _vars: &'tcx VarNodes<'tcx, T>,
     ) {
         todo!()
     }
 
-    pub fn del_control_dependence_edges(&mut self, _use_map: &mut UseMap<'tcx>) {
+    pub fn del_control_dependence_edges(&mut self, _use_map: &'tcx mut UseMap<'tcx>) {
         todo!()
-    }
-
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &Place<'tcx>> {
-        self.worklist.iter().rev()
     }
 }

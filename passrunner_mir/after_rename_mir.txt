@@ -30,7 +30,7 @@ fn main() -> () {
         _12 = SSAstmt;
         _13 = SSAstmt;
         _14 = SSAstmt;
-        _3 = copy _13;
+        _3 = copy _14;
         _2 = Lt(move _3, const 100_i32);
         switchInt(move _2) -> [0: bb9, otherwise: bb2];
     }

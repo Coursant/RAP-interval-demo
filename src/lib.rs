@@ -17,9 +17,10 @@
 #![feature(yeet_expr)]
 // tidy-alphabetical-end
 #[macro_use]
-extern crate  rustc_abi;
-extern crate rustc_codegen_ssa;
+extern crate once_cell;
 extern crate intervals;
+extern crate rustc_abi;
+extern crate rustc_codegen_ssa;
 extern crate rustc_const_eval;
 extern crate rustc_data_structures;
 extern crate rustc_driver;

@@ -28,8 +28,8 @@ impl<'tcx> Replacer<'tcx> {
             .ssatransformer
             .local_assign_blocks
             .iter()
-            .filter(|(_, blocks)| blocks.len() >= 2) // 只保留基本块数量大于等于 2 的条目
-            .map(|(&local, _)| local) // 提取 Local
+            .filter(|(_, blocks)| blocks.len() >= 2) 
+            .map(|(&local, _)| local) 
             .collect();
         for var in &variables {
             if let Some(def_blocks) = self.ssatransformer.local_assign_blocks.get(var) {
@@ -333,7 +333,7 @@ impl<'tcx> Replacer<'tcx> {
 
                         for i in 0..1 {
                             let essa_in_body = block_data.statements.get_mut(i).unwrap();
-                            let essa_ptr = essa_in_body as *const _; // 获取 statement 的指针作为 key
+                            let essa_ptr = essa_in_body as *const _; 
                             self.ssatransformer.essa_statements.insert(essa_ptr, true);
                         }
                     }
@@ -507,18 +507,15 @@ impl<'tcx> Replacer<'tcx> {
                         self.rename_local_def(place, &bb, false);
                     }
                 }
-                // 2. FakeRead: 变量使用
                 // StatementKind::FakeRead(_, place)
                 StatementKind::Deinit(place) | StatementKind::SetDiscriminant { place, .. } => {
                     // let place_mut = unsafe { &mut *(place as *const _ as *mut _) };
 
                     // self.replace_place(place.as_mut());
                 }
-                // 3. StorageLive: 变量定义
                 StatementKind::StorageLive(local) => {
                     // self.rename_local_def(*local);
                 }
-                // 4. StorageDead: 变量使用
                 StatementKind::StorageDead(local) => {
                     // self.replace_local(local);
                 }

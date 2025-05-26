@@ -16,9 +16,9 @@ use std::io::{self, Cursor};
 // use rustc_middle::mir::visit::*;
 use rustc_middle::mir::*;
 // use rustc_middle::mir::{visit::MutVisitor, Body};
+use crate::SSA::ssa;
 use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
-use crate::SSA::ssa;
 
 // use crate::domain::ConstraintGraph::ConstraintGraph;
 use super::SSATransformer::SSATransformer;

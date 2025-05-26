@@ -63,7 +63,7 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
-use RAP_interval_demo::domain::ConstraintGraph::ConstraintGraph;
+use RAP_interval_demo::domain::ConstraintGraph::{ConstraintGraph, Nuutila};
 use RAP_interval_demo::SSA::{ssa, PassRunner::*, SSATransformer::*};
 
 pub struct MyVisitor<'tcx> {
@@ -80,13 +80,7 @@ impl<'tcx> MyVisitor<'tcx> {
 }
 
 fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, essa_def_id: DefId) {
-    // let mir_built = tcx.mir_built(def_id);
-    // let body = mir_built.borrow();
-    // let mut body_steal  = tcx.mir_promoted(def_id).0.steal();
 
-    // cg.build_graph(&body_tcx);
-    // // cg.build_graph(&body_mut);
-    // // !bug
     let mut body = tcx.optimized_mir(def_id).clone();
     {
         let body_mut_ref: &mut Body<'tcx> = unsafe {
@@ -97,8 +91,11 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, e
         passrunner.run_pass(body_mut_ref, ssa_def_id, essa_def_id);
         passrunner.print_diff(body_mut_ref);
 
-        let mut cg: ConstraintGraph<'tcx, usize> = ConstraintGraph::new(essa_def_id, ssa_def_id);
+        let mut cg: ConstraintGraph<'tcx, i32> = ConstraintGraph::new(essa_def_id, ssa_def_id);
         cg.build_graph(body_mut_ref);
+        cg.build_nuutila(false);
+        cg.find_intervals();
+        cg.print_vars();
         // let mut cg_usize: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(essa_def_id, ssa_def_id);
         // cg_usize.build_graph(body_mut_ref);
     }
