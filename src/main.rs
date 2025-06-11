@@ -1,3 +1,9 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(non_snake_case)]
 #![feature(box_patterns)]
 #![feature(rustc_private)]
 // tidy-alphabetical-start
@@ -7,12 +13,9 @@
 #![feature(decl_macro)]
 #![feature(if_let_guard)]
 #![feature(impl_trait_in_assoc_type)]
-#![feature(is_sorted)]
 #![feature(let_chains)]
 #![feature(map_try_insert)]
 #![feature(never_type)]
-#![feature(option_get_or_insert_default)]
-#![feature(round_char_boundary)]
 #![feature(try_blocks)]
 #![feature(yeet_expr)]
 // tidy-alphabetical-end
@@ -64,7 +67,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 use RAP_interval_demo::domain::ConstraintGraph::{ConstraintGraph, Nuutila};
-use RAP_interval_demo::SSA::{ssa, PassRunner::*, SSATransformer::*};
+use RAP_interval_demo::SSA::{PassRunner::*, SSATransformer::*};
 
 pub struct MyVisitor<'tcx> {
     body_test: HashMap<LocalDefId, Option<bool>>,
@@ -80,7 +83,6 @@ impl<'tcx> MyVisitor<'tcx> {
 }
 
 fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, essa_def_id: DefId) {
-
     let mut body = tcx.optimized_mir(def_id).clone();
     {
         let body_mut_ref: &mut Body<'tcx> = unsafe {
@@ -96,6 +98,7 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, e
         cg.build_nuutila(false);
         cg.find_intervals();
         cg.print_vars();
+        cg.print_conponent_vars();
         // let mut cg_usize: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(essa_def_id, ssa_def_id);
         // cg_usize.build_graph(body_mut_ref);
     }

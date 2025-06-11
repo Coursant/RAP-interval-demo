@@ -2,6 +2,8 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(non_snake_case)]
 
 use super::{domain::*, range::RangeType, range::*};
 use num_traits::Bounded;
@@ -82,7 +84,22 @@ where
     }
     pub fn print_vars(&self) {
         for (&key, value) in &self.vars {
-            println!("var: {:?}. {:?}\n ", key, value.get_range());
+            println!("var: {:?}. {} ", key, value.get_range());
+        }
+    }
+    pub fn print_conponent_vars(&self) {
+        println!("====print_conponent_vars====");
+        for (key, value) in &self.components {
+            if value.len() > 1 {
+                println!("component: {:?} ", key);
+                for v in value {
+                    if let Some(var_node) = self.vars.get(v) {
+                        println!("var: {:?}. {} ", v, var_node.get_range());
+                    } else {
+                        println!("var: {:?} not found", v);
+                    }
+                }
+            }
         }
     }
     fn print_values_branchmap(&self) {
@@ -164,8 +181,8 @@ where
             }
         }
 
-        print!("len {:?} varnodes{:?}\n", self.vars.len(), self.vars);
-        print!("len {:?} oprs{:?}\n", self.oprs.len(), self.oprs);
+        print!("len {:?} varnodes\n", self.vars.len());
+        print!("len {:?} oprs\n", self.oprs.len());
         self.print_defmap();
         self.print_usemap();
         print!("end\n");
@@ -235,20 +252,23 @@ where
                         let value = Self::convert_const(&c.const_).unwrap();
                         let const_range =
                             Range::new(value.clone(), value.clone(), RangeType::Unknown);
-
+                        print!("cmp_op{:?}\n", cmp_op);
                         let true_range =
                             self.apply_comparison(value.clone(), cmp_op, true, const_in_left);
                         let false_range =
                             self.apply_comparison(value.clone(), cmp_op, false, const_in_left);
+                        // print!("true_range{:?}\n", true_range);
+                        // print!("false_range{:?}\n", false_range);
                         let target_vec = targets.all_targets();
+
                         let vbm = ValueBranchMap::new(
                             variable,
                             &target_vec[0],
                             &target_vec[1],
-                            IntervalType::Basic(BasicInterval::new(true_range)),
                             IntervalType::Basic(BasicInterval::new(false_range)),
+                            IntervalType::Basic(BasicInterval::new(true_range)),
                         );
-                        self.values_branchmap.insert(&place, vbm);
+                        self.values_branchmap.insert(variable, vbm);
                     }
                     (None, None) => {
                         let CR = Range::new(T::min_value(), T::max_value(), RangeType::Unknown);
@@ -411,7 +431,7 @@ where
                     let sink = self.oprs[*op].get_sink();
                     if component.contains(&sink) {
                         comp_use_map
-                            .entry(sink)
+                            .entry(place)
                             .or_insert_with(HashSet::new)
                             .insert(*op);
                     }
@@ -564,7 +584,7 @@ where
     ) {
         print!("essa_op{:?}\n", inst);
         let sink_node = self.add_varnode(sink);
-        println!("addsink_in_essa_op{:?}\n", sink_node);
+        println!("addsink_in_essa_op {:?}\n", sink_node);
 
         // let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
         let loc_1: usize = 0;
@@ -579,12 +599,30 @@ where
 
         let BI: IntervalType<'_, T>;
         if let Operand::Constant(c) = op {
-            BI = IntervalType::Basic(BasicInterval::new(Range::default(T::min_value())));
+            let vbm = self.values_branchmap.get(source1.unwrap()).unwrap();
+            if block == *vbm.get_bb_true() {
+                println!("essa_op true branch{:?}\n", block);
+                BI = vbm.get_itv_t();
+            } else {
+                println!("essa_op false branch{:?}\n", block);
+                BI = vbm.get_itv_f();
+            }
             self.usemap
                 .entry(source1.unwrap())
                 .or_default()
                 .insert(bop_index);
             println!("addvar_in_essa_op{:?}in \n", source1.unwrap());
+                    let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0,false);
+        // Insert the operation in the graph.
+
+        self.oprs.push(BasicOpKind::Essa(essaop));
+        // Insert this definition in defmap
+        // self.usemap
+        //     .entry(source1.unwrap())
+        //     .or_default()
+        //     .insert(bop_index);
+
+        self.defmap.insert(sink, bop_index);
         } else {
             let vbm = self.values_branchmap.get(source1.unwrap()).unwrap();
             if block == *vbm.get_bb_true() {
@@ -599,13 +637,15 @@ where
                 _ => None,
             };
             self.usemap
+                .entry(source1.unwrap())
+                .or_default()
+                .insert(bop_index);
+            self.usemap
                 .entry(source2.unwrap())
                 .or_default()
                 .insert(bop_index);
             println!("addvar_in_essa_op{:?}in \n", source2.unwrap());
-        }
-
-        let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0);
+                    let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0,true);
         // Insert the operation in the graph.
 
         self.oprs.push(BasicOpKind::Essa(essaop));
@@ -616,6 +656,9 @@ where
         //     .insert(bop_index);
 
         self.defmap.insert(sink, bop_index);
+        }
+
+
     }
     fn add_unary_op(
         &mut self,
@@ -723,9 +766,8 @@ where
         // ...
     }
     fn fix_intersects(&mut self, component: &HashSet<&'tcx Place<'tcx>>) {
-        // 处理交集
         for &place in component.iter() {
-            let node = self.vars.get(place).unwrap();
+            let node: &VarNode<'_, T> = self.vars.get(place).unwrap();
             // node.fix_intersects();
 
             if let Some(sit) = self.symbmap.get_mut(place) {
@@ -740,7 +782,7 @@ where
         // use crate::range_util::{get_first_less_from_vector, get_first_greater_from_vector};
 
         // assert!(!constant_vector.is_empty(), "Invalid constant vector");
-        let op  = &mut self.oprs[op];
+        let op = &mut self.oprs[op];
         let old_interval = op.get_intersect().get_range().clone();
         let new_interval = op.eval(&self.vars);
 
@@ -784,8 +826,8 @@ where
             .unwrap()
             .set_range(new_sink_interval.clone());
         println!(
-            "WIDEN::{:?}: {:?} -> {:?}",
-            sink, old_interval, new_sink_interval
+            "WIDEN in {:?} set {:?}: {} -> {}",
+            op, sink, old_interval, new_sink_interval
         );
 
         old_interval != new_sink_interval
@@ -857,7 +899,7 @@ where
         let mut worklist: Vec<&'tcx Place<'tcx>> = entry_points.iter().cloned().collect();
         let mut visited: HashSet<&'tcx Place<'tcx>> = entry_points.clone();
 
-            while let Some(place) = worklist.pop() {
+        while let Some(place) = worklist.pop() {
             if let Some(op_set) = comp_use_map.get(place) {
                 for &op in op_set {
                     if self.widen(op) {
@@ -896,15 +938,15 @@ where
     ) {
         for &place in component {
             let op = self.defmap.get(place).unwrap();
-            // if let BasicOpKind::Essa(essaop) = &mut self.oprs[*op] {
-            //     if essaop.is_unresolved() {
-            //         let source = essaop.get_source();
-            //         let new_range = essaop.eval(&self.vars);
-            //         let sink_node = self.vars.get_mut(source).unwrap();
-            //         sink_node.set_range(new_range);
-            //     }
-            //     essaop.mark_resolved();
-            // }
+            if let BasicOpKind::Essa(essaop) = &mut self.oprs[*op] {
+                if essaop.is_unresolved() {
+                    let source = essaop.get_source();
+                    let new_range = essaop.eval(&self.vars);
+                    let sink_node = self.vars.get_mut(source).unwrap();
+                    sink_node.set_range(new_range);
+                }
+                essaop.mark_resolved();
+            }
             if (!self.vars[place].get_range().is_unknown()) {
                 entry_points.insert(place);
             }
@@ -916,34 +958,51 @@ where
             for &op in self.usemap.get(place).unwrap().iter() {
                 let op = &mut self.oprs[op];
                 let sink = op.get_sink();
-                let new_range = op.eval(&self.vars);
-                let sink_node = self.vars.get_mut(sink).unwrap();
-                println!(
-                    "component {:?} set {:?} to {:?} through{:?}\n",
-                    component,
-                    new_range,
-                    sink,
-                    op.get_instruction()
-                );
-                sink_node.set_range(new_range);
+                if !component.contains(sink) {
+                    let new_range = op.eval(&self.vars);
+                    let sink_node = self.vars.get_mut(sink).unwrap();
+                    println!(
+                        "prop component {:?} set {} to {:?} through {:?}\n",
+                        component,
+                        new_range,
+                        sink,
+                        op.get_instruction()
+                    );
+                    sink_node.set_range(new_range);
 
-                if let BasicOpKind::Essa(essaop) = op {
-                    if essaop.get_intersect().get_range().is_unknown() {
-                        essaop.mark_unresolved();
+                    if let BasicOpKind::Essa(essaop) = op {
+                        if essaop.get_intersect().get_range().is_unknown() {
+                            essaop.mark_unresolved();
+                        }
                     }
                 }
             }
         }
     }
     pub fn find_intervals(&mut self) {
-        // 构建符号交集映射
         self.build_symbolic_intersect_map();
 
         // let scc_list = Nuutila::new(&self.vars, &self.usemap, &self.symbmap,false,&self.oprs);
         // self.print_vars();
         self.numSCCs = self.worklist.len();
-        let components: Vec<HashSet<&'tcx Place<'tcx>>> =
-            self.components.values().cloned().collect();
+        let mut seen = HashSet::new();
+        let mut components = Vec::new();
+
+        for &place in self.worklist.iter().rev() {
+            if seen.contains(place) {
+                continue;
+            }
+
+            if let Some(component) = self.components.get(place) {
+                for &p in component {
+                    seen.insert(p);
+                }
+
+                components.push(component.clone());
+            }
+        }
+        print!("TOLO:{:?}\n", components);
+
         for component in components {
             print!("===start component {:?}===\n", component);
             if component.len() == 1 {
@@ -964,12 +1023,10 @@ where
                 // self.print_vars();
 
                 self.generate_entry_points(&component, &mut entry_points);
-                print!(
-                    "component {:?} entry_points{:?}  \n ",
-                    component, entry_points
-                );
+                print!("entry_points {:?}  \n", entry_points);
+                // print!("comp_use_map {:?}  \n ", comp_use_map);
                 self.pre_update(&comp_use_map, &entry_points);
-                // self.fix_intersects(&component);
+                self.fix_intersects(&component);
 
                 for &variable in &component {
                     let varnode = self.vars.get_mut(variable).unwrap();

@@ -2,6 +2,9 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(non_snake_case)]
+
 use super::range::{Range, RangeType};
 use num_traits::{Bounded, CheckedAdd, CheckedSub, ToPrimitive};
 use rustc_abi::Size;
@@ -38,7 +41,6 @@ impl ConstConvert for usize {
         } else {
             None
         }
-
     }
 }
 impl ConstConvert for i32 {
@@ -47,7 +49,8 @@ impl ConstConvert for i32 {
             Some(scalar.to_i32())
         } else {
             None
-        }    }
+        }
+    }
 }
 pub trait IntervalArithmetic:
     PartialOrd
@@ -58,6 +61,7 @@ pub trait IntervalArithmetic:
     + Add<Output = Self>
     + Sub<Output = Self>
     + Mul<Output = Self>
+    + fmt::Display
 {
 }
 
@@ -70,6 +74,7 @@ impl<T> IntervalArithmetic for T where
         + Add<Output = T>
         + Sub<Output = T>
         + Mul<Output = T>
+        + fmt::Display
 {
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -417,6 +422,7 @@ impl<'tcx, T: IntervalArithmetic> EssaOp<'tcx, T> {
         inst: &'tcx Statement<'tcx>,
         source: &'tcx Place<'tcx>,
         opcode: u32,
+        unresolved: bool,
     ) -> Self {
         Self {
             intersect,
@@ -424,7 +430,7 @@ impl<'tcx, T: IntervalArithmetic> EssaOp<'tcx, T> {
             inst,
             source,
             opcode,
-            unresolved: true,
+            unresolved,
         }
     }
 
@@ -685,17 +691,17 @@ pub struct ValueBranchMap<'tcx, T: IntervalArithmetic> {
 impl<'tcx, T: IntervalArithmetic> ValueBranchMap<'tcx, T> {
     pub fn new(
         v: &'tcx Place<'tcx>,
-        bb_true: &'tcx BasicBlock,
         bb_false: &'tcx BasicBlock,
-        itv_t: IntervalType<'tcx, T>,
+        bb_true: &'tcx BasicBlock,
         itv_f: IntervalType<'tcx, T>,
+        itv_t: IntervalType<'tcx, T>,
     ) -> Self {
         Self {
             v,
-            bb_true,
             bb_false,
-            itv_t,
+            bb_true,
             itv_f,
+            itv_t,
         }
     }
 
@@ -745,4 +751,3 @@ pub type UseMap<'tcx> = HashMap<&'tcx Place<'tcx>, HashSet<usize>>;
 pub type SymbMap<'tcx> = HashMap<&'tcx Place<'tcx>, HashSet<usize>>;
 pub type DefMap<'tcx> = HashMap<&'tcx Place<'tcx>, usize>;
 pub type ValuesBranchMap<'tcx, T> = HashMap<&'tcx Place<'tcx>, ValueBranchMap<'tcx, T>>;
-

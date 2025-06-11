@@ -33,3 +33,8 @@ rustflags = ["-Awarnings"]
 
 [package.metadata.rust-analyzer]
 rustc_private = true
+[profile.dev]
+warnings = false
+
+[profile.release]
+warnings = false

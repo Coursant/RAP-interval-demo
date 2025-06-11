@@ -28,8 +28,8 @@ impl<'tcx> Replacer<'tcx> {
             .ssatransformer
             .local_assign_blocks
             .iter()
-            .filter(|(_, blocks)| blocks.len() >= 2) 
-            .map(|(&local, _)| local) 
+            .filter(|(_, blocks)| blocks.len() >= 2)
+            .map(|(&local, _)| local)
             .collect();
         for var in &variables {
             if let Some(def_blocks) = self.ssatransformer.local_assign_blocks.get(var) {
@@ -333,7 +333,7 @@ impl<'tcx> Replacer<'tcx> {
 
                         for i in 0..1 {
                             let essa_in_body = block_data.statements.get_mut(i).unwrap();
-                            let essa_ptr = essa_in_body as *const _; 
+                            let essa_ptr = essa_in_body as *const _;
                             self.ssatransformer.essa_statements.insert(essa_ptr, true);
                         }
                     }

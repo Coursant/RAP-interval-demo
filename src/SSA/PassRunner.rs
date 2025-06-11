@@ -1,5 +1,11 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(non_snake_case)]
+
 use rustc_hir::def_id::DefId;
-#[allow(unused)]
 use rustc_middle::mir::pretty::{write_mir_fn, PrettyPrintMirOptions};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -16,7 +22,6 @@ use std::io::{self, Cursor};
 // use rustc_middle::mir::visit::*;
 use rustc_middle::mir::*;
 // use rustc_middle::mir::{visit::MutVisitor, Body};
-use crate::SSA::ssa;
 use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
 

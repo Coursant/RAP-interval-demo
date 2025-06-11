@@ -6,6 +6,12 @@
 //! AddressOf or by borrowing) is considered non-SSA. However, it is UB to modify through an
 //! immutable borrow of a `Freeze` local. Those can still be considered to be SSA.
 //!
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_assignments)]
+#![allow(unused_parens)]
+#![allow(non_snake_case)]
 
 use tracing::{debug, error, info, instrument, trace, warn};
 

@@ -7,18 +7,15 @@
 #![feature(decl_macro)]
 #![feature(if_let_guard)]
 #![feature(impl_trait_in_assoc_type)]
-#![feature(is_sorted)]
 #![feature(let_chains)]
 #![feature(map_try_insert)]
 #![feature(never_type)]
-#![feature(option_get_or_insert_default)]
 #![feature(round_char_boundary)]
 #![feature(try_blocks)]
 #![feature(yeet_expr)]
 // tidy-alphabetical-end
-#[macro_use]
-extern crate once_cell;
 extern crate intervals;
+extern crate once_cell;
 extern crate rustc_abi;
 extern crate rustc_codegen_ssa;
 extern crate rustc_const_eval;

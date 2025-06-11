@@ -2,7 +2,7 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(unused_assignments)]
-use std::default;
+use std::{default, fmt};
 
 use bounds::Bound;
 use intervals::*;
@@ -13,17 +13,22 @@ use std::ops::{Add, Mul, Sub};
 
 use super::domain::*;
 
-
-
-
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum RangeType {
     Unknown,
     Regular,
     Empty,
 }
-
+impl fmt::Display for RangeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            RangeType::Unknown => "Unknown",
+            RangeType::Regular => "Regular",
+            RangeType::Empty => "Empty",
+        };
+        write!(f, "{}", s)
+    }
+}
 #[derive(Debug, PartialEq, Clone)]
 pub struct Range<T>
 where
@@ -41,7 +46,14 @@ enum UserType {
     Usize(usize),
     Empty,
 }
-
+impl<T> fmt::Display for Range<T>
+where
+    T: IntervalArithmetic,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.rtype, self.range)
+    }
+}
 impl<T> Range<T>
 where
     T: IntervalArithmetic,
@@ -171,27 +183,55 @@ where
     }
 
     pub fn intersectwith(&self, other: &Range<T>) -> Range<T> {
-        let left = std::cmp::max_by(self.get_lower(), other.get_lower(), |a, b| {
-            a.partial_cmp(b).unwrap()
-        });
-        let right = std::cmp::min_by(self.get_upper(), other.get_upper(), |a, b| {
-            a.partial_cmp(b).unwrap()
-        });
-        if left <= right {
-            Range::new(left.clone(), right.clone(), RangeType::Regular)
+        if self.is_unknown() {
+            return Range::new(
+                other.get_lower().clone(),
+                other.get_upper().clone(),
+                RangeType::Regular,
+            );
+        } else if other.is_unknown() {
+            return Range::new(
+                self.get_lower().clone(),
+                self.get_upper().clone(),
+                RangeType::Regular,
+            );
         } else {
-            let empty = T::min_value();
-            Range::new(empty.clone(), empty, RangeType::Empty)
+            let left = std::cmp::max_by(self.get_lower(), other.get_lower(), |a, b| {
+                a.partial_cmp(b).unwrap()
+            });
+            let right = std::cmp::min_by(self.get_upper(), other.get_upper(), |a, b| {
+                a.partial_cmp(b).unwrap()
+            });
+            if left <= right {
+                Range::new(left.clone(), right.clone(), RangeType::Regular)
+            } else {
+                let empty = T::min_value();
+                Range::new(empty.clone(), empty, RangeType::Empty)
+            }
         }
     }
     pub fn unionwith(&self, other: &Range<T>) -> Range<T> {
-        let left = std::cmp::min_by(self.get_lower(), other.get_lower(), |a, b| {
-            a.partial_cmp(b).unwrap()
-        });
-        let right = std::cmp::max_by(self.get_upper(), other.get_upper(), |a, b| {
-            a.partial_cmp(b).unwrap()
-        });
-        Range::new(left.clone(), right.clone(), RangeType::Regular)
+        if self.is_unknown() {
+            return Range::new(
+                other.get_lower().clone(),
+                other.get_upper().clone(),
+                RangeType::Regular,
+            );
+        } else if other.is_unknown() {
+            return Range::new(
+                self.get_lower().clone(),
+                self.get_upper().clone(),
+                RangeType::Regular,
+            );
+        } else {
+            let left = std::cmp::min_by(self.get_lower(), other.get_lower(), |a, b| {
+                a.partial_cmp(b).unwrap()
+            });
+            let right = std::cmp::max_by(self.get_upper(), other.get_upper(), |a, b| {
+                a.partial_cmp(b).unwrap()
+            });
+            Range::new(left.clone(), right.clone(), RangeType::Regular)
+        }
     }
     // Check if the range is the maximum range
     // pub fn is_max_range(&self) -> bool {
@@ -215,7 +255,7 @@ where
 pub struct Meet;
 
 impl Meet {
-    pub fn widen<'tcx, T: IntervalArithmetic + Clone + PartialOrd + std::fmt::Debug>(
+    pub fn widen<'tcx, T: IntervalArithmetic + fmt::Debug>(
         op: &mut BasicOpKind<'tcx, T>,
         constant_vector: &[T],
         vars: &mut VarNodes<'tcx, T>,
