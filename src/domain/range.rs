@@ -76,7 +76,12 @@ where
         }
     }
     // Getter for lower bound
-
+    pub fn init(r: Closed<T>) -> Self {
+        Self {
+            rtype: RangeType::Regular,
+            range: r,
+        }
+    }
     pub fn get_lower(&self) -> T {
         self.range.left.0.clone()
     }
@@ -196,18 +201,22 @@ where
                 RangeType::Regular,
             );
         } else {
-            let left = std::cmp::max_by(self.get_lower(), other.get_lower(), |a, b| {
-                a.partial_cmp(b).unwrap()
-            });
-            let right = std::cmp::min_by(self.get_upper(), other.get_upper(), |a, b| {
-                a.partial_cmp(b).unwrap()
-            });
-            if left <= right {
-                Range::new(left.clone(), right.clone(), RangeType::Regular)
-            } else {
-                let empty = T::min_value();
-                Range::new(empty.clone(), empty, RangeType::Empty)
-            }
+            let result = self.range.clone().intersect(other.range.clone());
+
+            let range = Range::init(result.unwrap());
+            range
+            // let left = std::cmp::max_by(self.get_lower(), other.get_lower(), |a, b| {
+            //     a.partial_cmp(b).unwrap()
+            // });
+            // let right = std::cmp::min_by(self.get_upper(), other.get_upper(), |a, b| {
+            //     a.partial_cmp(b).unwrap()
+            // });
+            // if left <= right {
+            //     Range::new(left.clone(), right.clone(), RangeType::Regular)
+            // } else {
+            //     let empty = T::min_value();
+            //     Range::new(empty.clone(), empty, RangeType::Empty)
+            // }
         }
     }
     pub fn unionwith(&self, other: &Range<T>) -> Range<T> {

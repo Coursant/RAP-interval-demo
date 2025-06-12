@@ -6,7 +6,7 @@
 #![allow(non_snake_case)]
 
 use super::range::{Range, RangeType};
-use num_traits::{Bounded, CheckedAdd, CheckedSub, ToPrimitive};
+use num_traits::{Bounded, CheckedAdd, CheckedSub, ToPrimitive,One,Zero};
 use rustc_abi::Size;
 use rustc_middle::mir::coverage::Op;
 use rustc_middle::mir::{
@@ -56,6 +56,8 @@ pub trait IntervalArithmetic:
     PartialOrd
     + Clone
     + Bounded
+    + Zero
+    + One
     + CheckedAdd
     + CheckedSub
     + Add<Output = Self>
@@ -69,6 +71,8 @@ impl<T> IntervalArithmetic for T where
     T: PartialOrd
         + Clone
         + Bounded
+        + Zero
+        + One
         + CheckedAdd
         + CheckedSub
         + Add<Output = T>
@@ -435,9 +439,15 @@ impl<'tcx, T: IntervalArithmetic> EssaOp<'tcx, T> {
     }
 
     pub fn eval(&self, vars: &VarNodes<'tcx, T>) -> Range<T> {
-        let result = self.source;
-        let mut result = vars[result].get_range().clone();
-        result = result.intersectwith(self.intersect.get_range());
+        let source_range = vars[self.source].get_range().clone();
+        let result = source_range.intersectwith(self.intersect.get_range());
+        print!(
+            "EssaOp eval: {:?} {} intersectwith {}-> {}\n",
+            self.source,
+            self.intersect.get_range(),
+            source_range,
+            result
+        );
         result
     }
     pub fn get_source(&self) -> &'tcx Place<'tcx> {

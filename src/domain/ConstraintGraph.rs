@@ -253,10 +253,13 @@ where
                         let const_range =
                             Range::new(value.clone(), value.clone(), RangeType::Unknown);
                         print!("cmp_op{:?}\n", cmp_op);
-                        let true_range =
+                        print!("const_in_left{:?}\n", const_in_left);
+                        let mut true_range =
                             self.apply_comparison(value.clone(), cmp_op, true, const_in_left);
-                        let false_range =
+                        let mut false_range =
                             self.apply_comparison(value.clone(), cmp_op, false, const_in_left);
+                        true_range.set_regular();
+                        false_range.set_regular();
                         // print!("true_range{:?}\n", true_range);
                         // print!("false_range{:?}\n", false_range);
                         let target_vec = targets.all_targets();
@@ -353,7 +356,7 @@ where
         match cmp_op {
             BinOp::Lt => {
                 if is_true_branch ^ const_in_left {
-                    Range::new(U::min_value(), constant, RangeType::Unknown)
+                    Range::new(U::min_value(), constant.sub(U::one()), RangeType::Unknown)
                 } else {
                     Range::new(constant, U::max_value(), RangeType::Unknown)
                 }
@@ -363,7 +366,7 @@ where
                 if is_true_branch ^ const_in_left {
                     Range::new(U::min_value(), constant, RangeType::Unknown)
                 } else {
-                    Range::new(constant, U::max_value(), RangeType::Unknown)
+                    Range::new(constant.add(U::one()), U::max_value(), RangeType::Unknown)
                 }
             }
 
@@ -371,7 +374,7 @@ where
                 if is_true_branch ^ const_in_left {
                     Range::new(U::min_value(), constant, RangeType::Unknown)
                 } else {
-                    Range::new(constant, U::max_value(), RangeType::Unknown)
+                    Range::new(constant.add(U::one()), U::max_value(), RangeType::Unknown)
                 }
             }
 
@@ -379,7 +382,7 @@ where
                 if is_true_branch ^ const_in_left {
                     Range::new(U::min_value(), constant, RangeType::Unknown)
                 } else {
-                    Range::new(constant, U::max_value(), RangeType::Unknown)
+                    Range::new(constant, U::max_value().sub(U::one()), RangeType::Unknown)
                 }
             }
 
@@ -612,17 +615,17 @@ where
                 .or_default()
                 .insert(bop_index);
             println!("addvar_in_essa_op{:?}in \n", source1.unwrap());
-                    let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0,false);
-        // Insert the operation in the graph.
+            let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0, false);
+            // Insert the operation in the graph.
 
-        self.oprs.push(BasicOpKind::Essa(essaop));
-        // Insert this definition in defmap
-        // self.usemap
-        //     .entry(source1.unwrap())
-        //     .or_default()
-        //     .insert(bop_index);
+            self.oprs.push(BasicOpKind::Essa(essaop));
+            // Insert this definition in defmap
+            // self.usemap
+            //     .entry(source1.unwrap())
+            //     .or_default()
+            //     .insert(bop_index);
 
-        self.defmap.insert(sink, bop_index);
+            self.defmap.insert(sink, bop_index);
         } else {
             let vbm = self.values_branchmap.get(source1.unwrap()).unwrap();
             if block == *vbm.get_bb_true() {
@@ -645,20 +648,18 @@ where
                 .or_default()
                 .insert(bop_index);
             println!("addvar_in_essa_op{:?}in \n", source2.unwrap());
-                    let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0,true);
-        // Insert the operation in the graph.
+            let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0, true);
+            // Insert the operation in the graph.
 
-        self.oprs.push(BasicOpKind::Essa(essaop));
-        // Insert this definition in defmap
-        // self.usemap
-        //     .entry(source1.unwrap())
-        //     .or_default()
-        //     .insert(bop_index);
+            self.oprs.push(BasicOpKind::Essa(essaop));
+            // Insert this definition in defmap
+            // self.usemap
+            //     .entry(source1.unwrap())
+            //     .or_default()
+            //     .insert(bop_index);
 
-        self.defmap.insert(sink, bop_index);
+            self.defmap.insert(sink, bop_index);
         }
-
-
     }
     fn add_unary_op(
         &mut self,
@@ -780,16 +781,16 @@ where
     }
     pub fn widen(&mut self, op: usize) -> bool {
         // use crate::range_util::{get_first_less_from_vector, get_first_greater_from_vector};
-
         // assert!(!constant_vector.is_empty(), "Invalid constant vector");
         let op = &mut self.oprs[op];
-        let old_interval = op.get_intersect().get_range().clone();
-        let new_interval = op.eval(&self.vars);
-
+        let sink = op.get_sink();
+        let old_interval = self.vars.get(sink).unwrap().get_range().clone();
+        let estimated_interval = op.eval(&self.vars);
         let old_lower = old_interval.get_lower();
         let old_upper = old_interval.get_upper();
-        let new_lower = new_interval.get_lower();
-        let new_upper = new_interval.get_upper();
+        let new_lower = estimated_interval.get_lower();
+        let new_upper = estimated_interval.get_upper();
+        // op.set_intersect(estimated_interval.clone());
 
         // let nlconstant = get_first_less_from_vector(constant_vector, new_lower);
         // let nuconstant = get_first_greater_from_vector(constant_vector, new_upper);
@@ -803,111 +804,83 @@ where
         //     .find(|&&c| c >= new_upper)
         //     .cloned()
         //     .unwrap_or(T::max_value());
-        let nlconstant = new_lower.clone();
-        let nuconstant = new_upper.clone();
+
         let updated = if old_interval.is_unknown() {
-            new_interval
+            estimated_interval.clone()
         } else if new_lower < old_lower && new_upper > old_upper {
-            Range::new(nlconstant, nuconstant, RangeType::Regular)
+            Range::new(T::min_value(), T::max_value(), RangeType::Regular)
         } else if new_lower < old_lower {
-            Range::new(nlconstant, old_upper.clone(), RangeType::Regular)
+            Range::new(T::min_value(), old_upper.clone(), RangeType::Regular)
         } else if new_upper > old_upper {
-            Range::new(old_lower.clone(), nuconstant, RangeType::Regular)
+            Range::new(old_lower.clone(), T::max_value(), RangeType::Regular)
         } else {
             old_interval.clone()
         };
 
-        op.set_intersect(updated.clone());
+        self.vars.get_mut(sink).unwrap().set_range(updated.clone());
+        println!(
+            "WIDEN in {:?} set {:?}: E {} U {} {} -> {}",
+            op, sink, estimated_interval, updated, old_interval, updated
+        );
 
+        old_interval != updated
+    }
+    pub fn narrow(&mut self, op: usize) -> bool {
+        let op = &mut self.oprs[op];
         let sink = op.get_sink();
-        let new_sink_interval = op.get_intersect().get_range().clone();
+        let old_interval = self.vars.get(sink).unwrap().get_range().clone();
+        let estimated_interval = op.eval(&self.vars);
+        let old_lower = old_interval.get_lower();
+        let old_upper = old_interval.get_upper();
+        let new_lower = estimated_interval.get_lower();
+        let new_upper = estimated_interval.get_upper();
+        // op.set_intersect(estimated_interval.clone());
+        let mut tightened = Range::default(T::min_value());
+        let mut hasChanged = false;
+
+        if old_lower.clone() == T::min_value() && old_lower.clone() > T::min_value() {
+            tightened = Range::new(new_lower.clone(), old_upper.clone(), RangeType::Regular);
+            hasChanged = true;
+        } else if old_lower.clone() <= new_lower.clone() {
+            tightened = Range::new(new_lower.clone(), old_upper.clone(), RangeType::Regular);
+            hasChanged = true;
+        };
+        if old_upper.clone() == T::max_value() && old_upper.clone() < T::max_value() {
+            tightened = Range::new(old_lower.clone(), new_upper.clone(), RangeType::Regular);
+            hasChanged = true;
+        } else if old_upper.clone() >= new_upper.clone() {
+            tightened = Range::new(old_lower.clone(), new_upper.clone(), RangeType::Regular);
+            hasChanged = true;
+        }
+
         self.vars
             .get_mut(sink)
             .unwrap()
-            .set_range(new_sink_interval.clone());
+            .set_range(tightened.clone());
         println!(
-            "WIDEN in {:?} set {:?}: {} -> {}",
-            op, sink, old_interval, new_sink_interval
+            "NARROW in {:?} set {:?}: E {} U {} {} -> {}",
+            op, sink, estimated_interval, tightened, old_interval, tightened
         );
 
-        old_interval != new_sink_interval
+        hasChanged
     }
-    pub fn narrow(&mut self, op: &mut BasicOpKind<'tcx, T>) -> bool {
-        let old_range = self.vars[op.get_sink()].get_range();
-        let o_lower = old_range.get_lower().clone();
-        let o_upper = old_range.get_upper().clone();
 
-        let new_range = op.eval(&self.vars);
-        let n_lower = new_range.get_lower().clone();
-        let n_upper = new_range.get_upper().clone();
-
-        let mut has_changed = false;
-        let min = T::min_value();
-        let max = T::max_value();
-
-        let mut result_lower = o_lower.clone();
-        let mut result_upper = o_upper.clone();
-
-        if o_lower == min && n_lower != min {
-            result_lower = n_lower;
-            has_changed = true;
-        } else {
-            // let smin = o_lower.clone().min(n_lower.clone());
-            let smin = T::min_value();
-            if o_lower != smin {
-                result_lower = smin;
-                has_changed = true;
-            }
-        }
-
-        if o_upper == max && n_upper != max {
-            result_upper = n_upper;
-            has_changed = true;
-        } else {
-            // let smax = o_upper.clone().max(n_upper.clone());
-            let smax = T::max_value();
-            if o_upper != smax {
-                result_upper = smax;
-                has_changed = true;
-            }
-        }
-
-        if has_changed {
-            let new_sink_range = Range::new(
-                result_lower.clone(),
-                result_upper.clone(),
-                RangeType::Regular,
-            );
-            let sink_node = self.vars.get_mut(op.get_sink()).unwrap();
-            sink_node.set_range(new_sink_range.clone());
-
-            // println!(
-            //     "NARROW::{}: {:?} -> {:?}",
-            // ,
-            //     Range::new(o_lower, o_upper),
-            //     new_sink_range
-            // );
-        }
-
-        has_changed
-    }
     fn pre_update(
         &mut self,
         comp_use_map: &HashMap<&'tcx Place<'tcx>, HashSet<usize>>,
         entry_points: &HashSet<&'tcx Place<'tcx>>,
     ) {
         let mut worklist: Vec<&'tcx Place<'tcx>> = entry_points.iter().cloned().collect();
-        let mut visited: HashSet<&'tcx Place<'tcx>> = entry_points.clone();
 
         while let Some(place) = worklist.pop() {
             if let Some(op_set) = comp_use_map.get(place) {
                 for &op in op_set {
                     if self.widen(op) {
                         let sink = self.oprs[op].get_sink();
+                        print!("W {:?}\n", sink);
+
                         // let sink_node = self.vars.get_mut(sink).unwrap();
-                        if visited.insert(sink) {
-                            worklist.push(sink);
-                        }
+                        worklist.push(sink);
                     }
                 }
             }
@@ -916,11 +889,30 @@ where
 
     fn pos_update(
         &mut self,
-        _comp_use_map: &HashMap<&'tcx Place<'tcx>, HashSet<usize>>,
-        _entry_points: &HashSet<&'tcx Place<'tcx>>,
-        _component: &HashSet<&'tcx Place<'tcx>>,
+        comp_use_map: &HashMap<&'tcx Place<'tcx>, HashSet<usize>>,
+        entry_points: &HashSet<&'tcx Place<'tcx>>,
     ) {
-        // TODO: Implement the logic for pre_update as needed.
+        let mut worklist: Vec<&'tcx Place<'tcx>> = entry_points.iter().cloned().collect();
+        let mut iteration = 0;
+        while let Some(place) = worklist.pop() {
+            iteration += 1;
+            if (iteration > 10) {
+                print!("Iteration limit reached, breaking out of pos_update\n");
+                break;
+            }
+
+            if let Some(op_set) = comp_use_map.get(place) {
+                for &op in op_set {
+                    if self.narrow(op) {
+                        let sink = self.oprs[op].get_sink();
+                        print!("N {:?}\n", sink);
+
+                        // let sink_node = self.vars.get_mut(sink).unwrap();
+                        worklist.push(sink);
+                    }
+                }
+            }
+        }
     }
     fn generate_active_vars(
         &mut self,
@@ -1037,7 +1029,7 @@ where
 
                 let mut active_vars = HashSet::new();
                 self.generate_active_vars(&component, &mut active_vars);
-                self.pos_update(&comp_use_map, &active_vars, &component);
+                self.pos_update(&comp_use_map, &entry_points);
             }
             self.propagate_to_next_scc(&component);
         }

@@ -86,7 +86,6 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, e
     let mut body = tcx.optimized_mir(def_id).clone();
     {
         let body_mut_ref: &mut Body<'tcx> = unsafe {
-            // 强制转换为更长的生命周期
             &mut *(&mut body as *mut Body<'tcx>)
         };
         let passrunner = PassRunner::new(tcx);
@@ -97,7 +96,6 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, e
         cg.build_graph(body_mut_ref);
         cg.build_nuutila(false);
         cg.find_intervals();
-        cg.print_vars();
         cg.print_conponent_vars();
         // let mut cg_usize: ConstraintGraph<'tcx, u32> = ConstraintGraph::new(essa_def_id, ssa_def_id);
         // cg_usize.build_graph(body_mut_ref);
