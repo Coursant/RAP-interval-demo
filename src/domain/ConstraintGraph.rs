@@ -819,7 +819,7 @@ where
 
         self.vars.get_mut(sink).unwrap().set_range(updated.clone());
         println!(
-            "WIDEN in {:?} set {:?}: E {} U {} {} -> {}",
+            "WIDEN in {} set {:?}: E {} U {} {} -> {}",
             op, sink, estimated_interval, updated, old_interval, updated
         );
 
@@ -858,7 +858,7 @@ where
             .unwrap()
             .set_range(tightened.clone());
         println!(
-            "NARROW in {:?} set {:?}: E {} U {} {} -> {}",
+            "NARROW in {} set {:?}: E {} U {} {} -> {}",
             op, sink, estimated_interval, tightened, old_interval, tightened
         );
 
@@ -961,7 +961,10 @@ where
                         op.get_instruction()
                     );
                     sink_node.set_range(new_range);
-
+                    // if self.symbmap.contains_key(sink) {
+                    //     let symb_set = self.symbmap.get_mut(sink).unwrap();
+                    //     symb_set.insert(op.get_index());
+                    // }
                     if let BasicOpKind::Essa(essaop) = op {
                         if essaop.get_intersect().get_range().is_unknown() {
                             essaop.mark_unresolved();

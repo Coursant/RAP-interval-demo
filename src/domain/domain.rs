@@ -6,7 +6,7 @@
 #![allow(non_snake_case)]
 
 use super::range::{Range, RangeType};
-use num_traits::{Bounded, CheckedAdd, CheckedSub, ToPrimitive,One,Zero};
+use num_traits::{Bounded, CheckedAdd, CheckedSub, One, ToPrimitive, Zero};
 use rustc_abi::Size;
 use rustc_middle::mir::coverage::Op;
 use rustc_middle::mir::{
@@ -86,7 +86,17 @@ pub enum IntervalType<'tcx, T: IntervalArithmetic> {
     Basic(BasicInterval<T>),
     Symb(SymbInterval<'tcx, T>), // Using 'static for simplicity, adjust lifetime as needed
 }
-
+impl<'tcx, T: IntervalArithmetic> fmt::Display for IntervalType<'tcx, T>
+where
+    T: IntervalArithmetic,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IntervalType::Basic(b) => write!(f, "BasicInterval: {}", b.get_range()),
+            IntervalType::Symb(s) => write!(f, "SymbInterval: {}", s.get_range()),
+        }
+    }
+}
 pub trait IntervalTypeTrait<T: IntervalArithmetic> {
     // fn get_value_id(&self) -> IntervalId;
     fn get_range(&self) -> &Range<T>;
@@ -248,6 +258,19 @@ pub enum BasicOpKind<'tcx, T: IntervalArithmetic> {
     ControlDep(ControlDep<'tcx, T>),
     Phi(PhiOp<'tcx, T>),
     Use(UseOp<'tcx, T>),
+}
+
+impl<'tcx, T: IntervalArithmetic> fmt::Display for BasicOpKind<'tcx, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BasicOpKind::Unary(op) => write!(f, "UnaryOp: intersect {} sink:{:?} source:{:?} inst:{:?} ",op.intersect,op.sink,op.source,op.inst),
+            BasicOpKind::Binary(op) => write!(f, "BinaryOp: intersect {} sink:{:?} source1:{:?} source2:{:?} inst:{:?} const_value:{} ",op.intersect,op.sink,op.source1,op.source2,op.inst,op.const_value.clone().unwrap()),
+            BasicOpKind::Essa(op) => write!(f, "EssaOp: intersect {} sink:{:?} source:{:?} inst:{:?} unresolved:{:?} ",op.intersect,op.sink,op.source,op.inst,op.unresolved),
+            BasicOpKind::ControlDep(op) => write!(f, "ControlDep: intersect {} sink:{:?} source:{:?} inst:{:?}  ",op.intersect,op.sink,op.source,op.inst),
+            BasicOpKind::Phi(op) => write!(f, "PhiOp: intersect {} sink:{:?} source:{:?} inst:{:?}  ",op.intersect,op.sink,op.sources,op.inst),
+            BasicOpKind::Use(op) => write!(f, "UseOp: intersect {} sink:{:?} source:{:?} inst:{:?} ",op.intersect,op.sink,op.source,op.inst ),
+        }
+    }
 }
 impl<'tcx, T: IntervalArithmetic> BasicOpKind<'tcx, T> {
     pub fn eval(&self, vars: &VarNodes<'tcx, T>) -> Range<T> {

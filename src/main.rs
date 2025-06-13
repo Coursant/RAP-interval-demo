@@ -85,9 +85,7 @@ impl<'tcx> MyVisitor<'tcx> {
 fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId, ssa_def_id: DefId, essa_def_id: DefId) {
     let mut body = tcx.optimized_mir(def_id).clone();
     {
-        let body_mut_ref: &mut Body<'tcx> = unsafe {
-            &mut *(&mut body as *mut Body<'tcx>)
-        };
+        let body_mut_ref: &mut Body<'tcx> = unsafe { &mut *(&mut body as *mut Body<'tcx>) };
         let passrunner = PassRunner::new(tcx);
         passrunner.run_pass(body_mut_ref, ssa_def_id, essa_def_id);
         passrunner.print_diff(body_mut_ref);

@@ -12,7 +12,10 @@ use z3::ast::Int;
 use std::ops::{Add, Mul, Sub};
 
 use super::domain::*;
+use once_cell::sync::Lazy;
 
+static STR_MIN: Lazy<String> = Lazy::new(|| "Min".to_string());
+static STR_MAX: Lazy<String> = Lazy::new(|| "Max".to_string());
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum RangeType {
     Unknown,
@@ -51,9 +54,33 @@ where
     T: IntervalArithmetic,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.rtype, self.range)
+        let lower = if self.range.left.0 == T::min_value() {
+            &*STR_MIN
+        } else if self.range.left.0 == T::max_value() {
+            &*STR_MAX
+        } else {
+            return write!(
+                f,
+                "{} [{}, {}]",
+                self.rtype, self.range.left.0, self.range.right.0
+            );
+        };
+
+        let upper = if self.range.right.0 == T::min_value() {
+            &*STR_MIN
+        } else if self.range.right.0 == T::max_value() {
+            &*STR_MAX
+        } else {
+            return write!(
+                f,
+                "{} [{}, {}]",
+                self.rtype, self.range.left.0, self.range.right.0
+            );
+        };
+        write!(f, "{} [{}, {}]", self.rtype, lower, upper)
     }
 }
+
 impl<T> Range<T>
 where
     T: IntervalArithmetic,
