@@ -130,7 +130,7 @@ impl<'tcx> Replacer<'tcx> {
     fn extract_condition(
         &self,
         place: &Place<'tcx>,
-        switch_block: BasicBlockData<'tcx>,
+        switch_block: &BasicBlockData<'tcx>,
     ) -> Option<(Operand<'tcx>, Operand<'tcx>, BinOp)> {
         for stmt in &switch_block.statements {
             if let StatementKind::Assign(box (lhs, Rvalue::BinaryOp(bin_op, box (op1, op2)))) =
@@ -174,8 +174,7 @@ impl<'tcx> Replacer<'tcx> {
         discr: &Operand<'tcx>,
         body: &mut Body<'tcx>,
     ) {
-        let switch_block_data = body.basic_blocks[*switch_block].clone();
-        let block_data: &mut BasicBlockData<'tcx> = &mut body.basic_blocks.as_mut()[*bb];
+        let switch_block_data = &body.basic_blocks[*switch_block];
 
         // let mut essa_operands: IndexVec<_, _> = IndexVec::with_capacity(2);
         let magic_number = 213134123 as u64;
@@ -208,6 +207,10 @@ impl<'tcx> Replacer<'tcx> {
             if let Some((op1, op2, cmp_op)) =
                 self.extract_condition(switch_place, switch_block_data)
             {
+                                        print!("op1: {:?}, op2: {:?}, cmp_op: {:?}\n", op1, op2, cmp_op);
+
+                let block_data: &mut BasicBlockData<'tcx> = &mut body.basic_blocks.as_mut()[*bb];
+
                 let const_op1: Option<&ConstOperand<'_>> = op1.constant();
                 let const_op2: Option<&ConstOperand<'_>> = op2.constant();
                 let cmp_operand: Operand<'_> = match cmp_op.clone() {
@@ -277,8 +280,9 @@ impl<'tcx> Replacer<'tcx> {
                                     source_info: SourceInfo::outermost(body.span),
                                     kind: StatementKind::Assign(Box::new((place2, rvalue2))),
                                 };
-                                block_data.statements.insert(0, assign_stmt1);
                                 block_data.statements.insert(0, assign_stmt2);
+
+                                block_data.statements.insert(0, assign_stmt1);
                                 for i in 0..2 {
                                     let essa_in_body = block_data.statements.get_mut(i).unwrap();
                                     let essa_ptr = essa_in_body as *const _; // 获取 statement 的指针作为 key
@@ -369,13 +373,14 @@ impl<'tcx> Replacer<'tcx> {
         body: &mut Body<'tcx>,
         switch_bb: BasicBlock,
     ) {
-        let switch_block_data = body.basic_blocks[switch_bb].clone();
-        if let Some(terminator) = &switch_block_data.clone().terminator {
+        let switch_block_data = &body.basic_blocks[switch_bb];
+        if let Some(terminator) = &switch_block_data.terminator {
             if let TerminatorKind::SwitchInt { discr, .. } = &terminator.kind {
                 if let Operand::Copy(switch_place) | Operand::Move(switch_place) = discr {
                     if let Some((op1, op2, cmp_op)) =
                         self.extract_condition(switch_place, switch_block_data)
                     {
+                        print!("op1: {:?}, op2: {:?}, cmp_op: {:?}\n", op1, op2, cmp_op);
                         if op2.constant().is_none() {
                             let essa_statement = body.basic_blocks.as_mut()[succ_bb]
                                 .statements

@@ -27,40 +27,40 @@ fn main() -> () {
     }
 
     bb1: {
-        _12 = (copy _4, copy _23);
-        _13 = (copy _1, copy _24);
-        _14 = (copy _5, copy _22);
-        _3 = copy _13;
+        _12 = (copy _1, copy _24);
+        _13 = (copy _5, copy _23);
+        _14 = (copy _4, copy _22);
+        _3 = copy _12;
         _2 = Lt(move _3, const 100_i32);
         switchInt(move _2) -> [0: bb9, otherwise: bb2];
     }
 
     bb2: {
-        _15 = (copy _13, const 100_i32, const 1_usize);
+        _15 = (copy _12, const 100_i32, const 1_usize);
         _4 = const 0_i32;
         _5 = copy _15;
         goto -> bb3;
     }
 
     bb3: {
-        _16 = (copy _5, copy _21);
-        _17 = (copy _4, copy _20);
-        _7 = copy _17;
-        _8 = copy _16;
+        _16 = (copy _4, copy _20);
+        _17 = (copy _5, copy _21);
+        _7 = copy _16;
+        _8 = copy _17;
         _6 = Lt(move _7, move _8);
         switchInt(move _6) -> [0: bb7, otherwise: bb4];
     }
 
     bb4: {
-        _18 = (copy _17, copy _16, const 2_usize, const 213134123_usize);
-        _19 = (copy _16, copy _17, const 1_usize, const 213134123_usize);
-        _9 = AddWithOverflow(copy _19, const 1_i32);
+        _18 = (copy _16, copy _17, const 1_usize, const 213134123_usize);
+        _19 = (copy _17, copy _16, const 2_usize, const 213134123_usize);
+        _9 = AddWithOverflow(copy _18, const 1_i32);
         assert(!move _9, "attempt to compute `{} + {}`, which would overflow", copy _4, const 1_i32) -> [success: bb5, unwind continue];
     }
 
     bb5: {
         _20 = move _9;
-        _10 = SubWithOverflow(copy _18, const 1_i32);
+        _10 = SubWithOverflow(copy _19, const 1_i32);
         assert(!move _10, "attempt to compute `{} - {}`, which would overflow", copy _5, const 1_i32) -> [success: bb6, unwind continue];
     }
 
@@ -70,8 +70,8 @@ fn main() -> () {
     }
 
     bb7: {
-        _22 = (copy _17, copy _16, const 1_usize, const 213134123_usize);
-        _23 = (copy _16, copy _17, const 2_usize, const 213134123_usize);
+        _22 = (copy _16, copy _17, const 2_usize, const 213134123_usize);
+        _23 = (copy _17, copy _16, const 1_usize, const 213134123_usize);
         _11 = AddWithOverflow(copy _15, const 1_i32);
         assert(!move _11, "attempt to compute `{} + {}`, which would overflow", copy _1, const 1_i32) -> [success: bb8, unwind continue];
     }
@@ -82,7 +82,7 @@ fn main() -> () {
     }
 
     bb9: {
-        _25 = (copy _13, const 100_i32, const 2_usize);
+        _25 = (copy _12, const 100_i32, const 2_usize);
         return;
     }
 }

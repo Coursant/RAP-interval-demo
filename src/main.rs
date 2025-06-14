@@ -82,15 +82,15 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
     // let body = mir_built.borrow();
     // let mut body_steal  = tcx.mir_promoted(def_id).0.steal();
 
-    let body_tcx = tcx.optimized_mir(def_id);
-    let mut body_mut = tcx.optimized_mir(def_id).clone();
-    let passrunner = PassRunner::new(tcx);
-    passrunner.run_pass(&mut body_mut);
-    passrunner.print_diff(&body_mut);
+    // let body_tcx = tcx.optimized_mir(def_id);
+    // let mut body_mut = tcx.optimized_mir(def_id).clone();
+    // let passrunner = PassRunner::new(tcx);
+    // passrunner.run_pass(&mut body_mut);
+    // passrunner.print_diff(&body_mut);
 
-    let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
+    // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
 
-    cg.build_graph(&body_tcx);
+    // cg.build_graph(&body_tcx);
     // cg.build_graph(&body_mut);
     // !bug  
     let mut body = tcx.optimized_mir(def_id).clone();
@@ -104,8 +104,8 @@ fn analyze_mir<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) {
         passrunner.print_diff(body_mut_ref);
 
         let mut visitor = MyVisitor::new(body_mut_ref, def_id);
-        let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
-        cg.build_graph(body_mut_ref);
+        // let mut cg: ConstraintGraph<'tcx, u32> = ConstraintGraph::new();
+        // cg.build_graph(body_mut_ref);
     }
 }
 
