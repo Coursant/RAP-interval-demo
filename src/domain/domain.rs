@@ -52,6 +52,16 @@ impl ConstConvert for i32 {
         }
     }
 }
+
+impl ConstConvert for i64 {
+    fn from_const(c: &Const) -> Option<Self> {
+        if let Some(scalar) = c.try_to_scalar_int() {
+            Some(scalar.to_i64())
+        } else {
+            None
+        }
+    }
+}
 pub trait IntervalArithmetic:
     PartialOrd
     + Clone
@@ -126,6 +136,11 @@ impl<T: IntervalArithmetic> BasicInterval<T> {
     pub fn new(range: Range<T>) -> Self {
         Self { range }
     }
+    pub fn default() -> Self {
+        Self {
+            range: Range::default(T::min_value()),
+        }
+    }
 }
 
 impl<T: IntervalArithmetic> IntervalTypeTrait<T> for BasicInterval<T> {
@@ -150,11 +165,11 @@ impl<T: IntervalArithmetic> IntervalTypeTrait<T> for BasicInterval<T> {
 pub struct SymbInterval<'tcx, T: IntervalArithmetic> {
     range: Range<T>,
     symbound: &'tcx Place<'tcx>,
-    predicate: bool,
+    predicate: BinOp,
 }
 
 impl<'tcx, T: IntervalArithmetic> SymbInterval<'tcx, T> {
-    pub fn new(range: Range<T>, symbound: &'tcx Place<'tcx>, predicate: bool) -> Self {
+    pub fn new(range: Range<T>, symbound: &'tcx Place<'tcx>, predicate: BinOp) -> Self {
         Self {
             range: range,
             symbound,
@@ -162,7 +177,7 @@ impl<'tcx, T: IntervalArithmetic> SymbInterval<'tcx, T> {
         }
     }
 
-    pub fn get_operation(&self) -> bool {
+    pub fn get_operation(&self) -> BinOp {
         self.predicate
     }
 
@@ -170,10 +185,48 @@ impl<'tcx, T: IntervalArithmetic> SymbInterval<'tcx, T> {
         self.symbound
     }
 
-    pub fn sym_fix_intersects(&mut self, v: &VarNode<T>, sink: &'tcx Place<'tcx>) -> Range<T> {
-        let r = v.get_range().clone();
+    pub fn sym_fix_intersects(&self, bound: & VarNode<'tcx,T>, sink: & VarNode<'tcx,T>) -> Range<T> {
+        let l = bound.get_range().get_lower().clone();
+        let u = bound.get_range().get_upper().clone();
 
-        r
+        let lower = sink.get_range().get_lower().clone();
+        let upper = sink.get_range().get_upper().clone();
+
+        match self.predicate {
+            BinOp::Eq => Range::new(l, u, RangeType::Regular),
+
+            BinOp::Le => Range::new(lower, u, RangeType::Regular),
+
+            BinOp::Lt => {
+                if u != T::max_value() {
+                    let u_minus_1 = u.checked_sub(&T::one()).unwrap_or(u);
+                    Range::new(lower, u_minus_1, RangeType::Regular)
+                } else {
+                    Range::new(lower, u, RangeType::Regular)
+                }
+            }
+
+            BinOp::Ge => Range::new(l, upper, RangeType::Regular),
+
+            BinOp::Gt => {
+                if l != T::min_value() {
+                    let l_plus_1 = l.checked_add(&T::one()).unwrap_or(l);
+                    Range::new(l_plus_1, upper, RangeType::Regular)
+                } else {
+                    Range::new(l, upper, RangeType::Regular)
+                }
+            }
+
+            BinOp::Ne => {
+                // 不等的情况不好精确表示，用全范围
+                Range::new(T::min_value(), T::max_value(), RangeType::Regular)
+            }
+
+            _ => {
+                // 其它暂未处理的操作，保守返回全范围
+                Range::new(T::min_value(), T::max_value(), RangeType::Regular)
+            }
+        }
     }
 }
 
@@ -323,14 +376,13 @@ impl<'tcx, T: IntervalArithmetic> BasicOpKind<'tcx, T> {
             BasicOpKind::Use(op) => &op.intersect,
         }
     }
-    pub fn op_fix_intersects(&mut self, v: &VarNode<T>) {
-        let sink = self.get_sink();
+    pub fn op_fix_intersects(&mut self, v: &VarNode<'tcx,T>,sink: &VarNode<'tcx,T>) {
 
-        // 手动借出 intersect，分开可变和不可变 borrow
         let intersect = self.get_intersect_mut();
 
         if let IntervalType::Symb(symbi) = intersect {
             let range = symbi.sym_fix_intersects(v, sink);
+            println!("from {:?} to {:?} fix_intersects: {:} -> {}\n",v.get_value().clone(),sink.get_value().clone(),intersect.clone() , range);
             self.set_intersect(range);
         }
     }
@@ -344,7 +396,7 @@ impl<'tcx, T: IntervalArithmetic> BasicOpKind<'tcx, T> {
             BasicOpKind::Use(op) => op.intersect.set_range(new_intersect),
         }
     }
-    fn get_intersect_mut(&mut self) -> &mut IntervalType<'tcx, T> {
+    pub fn get_intersect_mut(&mut self) -> &mut IntervalType<'tcx, T> {
         match self {
             BasicOpKind::Unary(op) => &mut op.intersect,
             BasicOpKind::Binary(op) => &mut op.intersect,
@@ -352,6 +404,16 @@ impl<'tcx, T: IntervalArithmetic> BasicOpKind<'tcx, T> {
             BasicOpKind::ControlDep(op) => &mut op.intersect,
             BasicOpKind::Phi(op) => &mut op.intersect,
             BasicOpKind::Use(op) => &mut op.intersect,
+        }
+    }
+    pub fn get_source(&self) -> &'tcx Place<'tcx> {
+        match self {
+            BasicOpKind::Unary(op) => op.source,
+            BasicOpKind::Binary(op) => op.source1.unwrap(),
+            BasicOpKind::Essa(op) => op.source,
+            BasicOpKind::ControlDep(op) => op.source,
+            BasicOpKind::Phi(op) => op.sources[0],
+            BasicOpKind::Use(op) => op.source,
         }
     }
     // pub fn eval(&self) -> Range<T> {
@@ -611,7 +673,7 @@ pub struct ControlDep<'tcx, T: IntervalArithmetic> {
     pub intersect: IntervalType<'tcx, T>,
     pub sink: &'tcx Place<'tcx>,
     pub inst: &'tcx Statement<'tcx>,
-    pub source: Place<'tcx>,
+    pub source: &'tcx Place<'tcx>,
 }
 
 impl<'tcx, T: IntervalArithmetic> ControlDep<'tcx, T> {
@@ -619,7 +681,7 @@ impl<'tcx, T: IntervalArithmetic> ControlDep<'tcx, T> {
         intersect: IntervalType<'tcx, T>,
         sink: &'tcx Place<'tcx>,
         inst: &'tcx Statement<'tcx>,
-        source: Place<'tcx>,
+        source: &'tcx Place<'tcx>,
     ) -> Self {
         Self {
             intersect,

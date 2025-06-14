@@ -103,8 +103,19 @@ where
         }
     }
     fn print_values_branchmap(&self) {
-        for (key, value) in &self.values_branchmap {
+        for (&key, value) in &self.values_branchmap {
             println!("vbm place: {:?}. {:?}\n ", key, value);
+        }
+    }
+    fn print_symbmap(&self) {
+        for (&key, value) in &self.symbmap {
+            for op in value.iter() {
+                if let Some(op) = self.oprs.get(*op) {
+                    println!("symbmap op: {:?}. {:?}\n ", key, op);
+                } else {
+                    println!("symbmap op: {:?} not found\n ", op);
+                }
+            }
         }
     }
     fn print_defmap(&self) {
@@ -126,7 +137,7 @@ where
             if component.contains(key) {
                 for v in value {
                     println!(
-                        "place: {:?} use in stmt:{:?} {:?}",
+                        "compusemap place: {:?} use in stmt:{:?} {:?}",
                         key,
                         self.oprs[v].get_type_name(),
                         self.oprs[v].get_instruction()
@@ -290,11 +301,15 @@ where
 
                         self.add_varnode(&p2);
                         print!("add_vbm_varnode{:?}\n", p2.clone());
-
-                        let STOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, true));
-                        let SFOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, false));
-                        let STOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), p1, true));
-                        let SFOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), p1, false));
+                        let flipped_binop = Self::flipped_binop(cmp_op).unwrap();
+                        let STOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, cmp_op));
+                        let SFOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, cmp_op));
+                        let STOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), p1, flipped_binop));
+                        let SFOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), p1, flipped_binop));
+                    //    let STOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, flipped_binop));
+                    //     let SFOp1 = IntervalType::Symb(SymbInterval::new(CR.clone(), p2, cmp_op));
+                    //     let STOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), p1, flipped_binop));
+                    //     let SFOp2 = IntervalType::Symb(SymbInterval::new(CR.clone(), p1, cmp_op));                        
                         let vbm_1 =
                             ValueBranchMap::new(p1, &target_vec[0], &target_vec[1], STOp1, SFOp1);
                         let vbm_2 =
@@ -306,7 +321,23 @@ where
             };
         }
     }
-
+pub fn flipped_binop(op: BinOp) -> Option<BinOp> {
+    use BinOp::*;
+    Some(match op {
+        Eq => Eq,
+        Ne => Ne,
+        Lt => Gt,
+        Le => Ge,
+        Gt => Lt,
+        Ge => Le,
+        Add => Add,
+        Mul => Mul,
+        BitXor => BitXor,
+        BitAnd => BitAnd,
+        BitOr => BitOr,
+        _=>{return None;}
+    })
+}
     fn extract_condition(
         &mut self,
         place: &'tcx Place<'tcx>,
@@ -417,10 +448,11 @@ where
                 if let IntervalType::Symb(symbi) = essaop.get_intersect() {
                     let v = symbi.get_bound();
                     self.symbmap.entry(v).or_insert_with(HashSet::new).insert(i);
-                    println!("sym_map insert {:?} {:?}\n", v, essaop);
+                    println!("symbmap insert {:?} {:?}\n", v, essaop);
                 }
             }
         }
+        // println!("symbmap: {:?}", self.symbmap);
     }
     pub fn build_use_map(
         &mut self,
@@ -585,9 +617,9 @@ where
         operands: &'tcx IndexVec<FieldIdx, Operand<'tcx>>,
         block: BasicBlock,
     ) {
-        print!("essa_op{:?}\n", inst);
+        // print!("essa_op{:?}\n", inst);
         let sink_node = self.add_varnode(sink);
-        println!("addsink_in_essa_op {:?}\n", sink_node);
+        // println!("addsink_in_essa_op {:?}\n", sink_node);
 
         // let BI: BasicInterval<T> = BasicInterval::new(Range::default(T::min_value()));
         let loc_1: usize = 0;
@@ -596,7 +628,6 @@ where
             Operand::Copy(place) | Operand::Move(place) => Some(place),
             _ => None,
         };
-        println!("addvar_in_essa_op{:?}\n", source1.unwrap());
         let op = &operands[loc_2.into()];
         let bop_index = self.oprs.len();
 
@@ -614,8 +645,14 @@ where
                 .entry(source1.unwrap())
                 .or_default()
                 .insert(bop_index);
-            println!("addvar_in_essa_op{:?}in \n", source1.unwrap());
+
             let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0, false);
+            println!(
+                "addvar_in_essa_op {:?} from const {:?}\n",
+                essaop,
+                source1.unwrap()
+            );
+
             // Insert the operation in the graph.
 
             self.oprs.push(BasicOpKind::Essa(essaop));
@@ -643,13 +680,17 @@ where
                 .entry(source1.unwrap())
                 .or_default()
                 .insert(bop_index);
-            self.usemap
-                .entry(source2.unwrap())
-                .or_default()
-                .insert(bop_index);
-            println!("addvar_in_essa_op{:?}in \n", source2.unwrap());
+            // self.usemap
+            // .entry(source2.unwrap())
+            // .or_default()
+            // .insert(bop_index);
             let essaop = EssaOp::new(BI, sink, inst, source1.unwrap(), 0, true);
             // Insert the operation in the graph.
+            println!(
+                "addvar_in_essa_op {:?} from {:?}\n",
+                essaop,
+                source1.unwrap()
+            );
 
             self.oprs.push(BasicOpKind::Essa(essaop));
             // Insert this definition in defmap
@@ -768,13 +809,15 @@ where
     }
     fn fix_intersects(&mut self, component: &HashSet<&'tcx Place<'tcx>>) {
         for &place in component.iter() {
-            let node: &VarNode<'_, T> = self.vars.get(place).unwrap();
             // node.fix_intersects();
-
             if let Some(sit) = self.symbmap.get_mut(place) {
+                            let node= self.vars.get(place).unwrap();
+
                 for &op in sit.iter() {
                     let op = &mut self.oprs[op];
-                    op.op_fix_intersects(node);
+                    let sinknode = self.vars.get(op.get_sink()).unwrap(); ;
+
+                    op.op_fix_intersects(node,sinknode);
                 }
             }
         }
@@ -835,23 +878,29 @@ where
         let new_lower = estimated_interval.get_lower();
         let new_upper = estimated_interval.get_upper();
         // op.set_intersect(estimated_interval.clone());
-        let mut tightened = Range::default(T::min_value());
-        let mut hasChanged = false;
-
-        if old_lower.clone() == T::min_value() && old_lower.clone() > T::min_value() {
-            tightened = Range::new(new_lower.clone(), old_upper.clone(), RangeType::Regular);
-            hasChanged = true;
+        // let mut hasChanged = false;
+        let mut final_lower = old_lower.clone();
+        let mut final_upper = old_upper.clone();
+        if old_lower.clone() == T::min_value() && new_lower.clone() > T::min_value() {
+            final_lower = new_lower.clone();
+            // tightened = Range::new(new_lower.clone(), old_upper.clone(), RangeType::Regular);
+            // hasChanged = true;
         } else if old_lower.clone() <= new_lower.clone() {
-            tightened = Range::new(new_lower.clone(), old_upper.clone(), RangeType::Regular);
-            hasChanged = true;
+                        final_lower = new_lower.clone();
+
+            // tightened = Range::new(new_lower.clone(), old_upper.clone(), RangeType::Regular);
+            // hasChanged = true;
         };
-        if old_upper.clone() == T::max_value() && old_upper.clone() < T::max_value() {
-            tightened = Range::new(old_lower.clone(), new_upper.clone(), RangeType::Regular);
-            hasChanged = true;
+        if old_upper.clone() == T::max_value() && new_upper.clone() < T::max_value() {
+            final_upper = new_upper.clone();
+            // tightened = Range::new(old_lower.clone(), new_upper.clone(), RangeType::Regular);
+            // hasChanged = true;
         } else if old_upper.clone() >= new_upper.clone() {
-            tightened = Range::new(old_lower.clone(), new_upper.clone(), RangeType::Regular);
-            hasChanged = true;
+            final_upper = new_upper.clone();
+            // tightened = Range::new(old_lower.clone(), new_upper.clone(), RangeType::Regular);
+            // hasChanged = true;
         }
+        let mut tightened = Range::new(final_lower,final_upper , RangeType::Regular);
 
         self.vars
             .get_mut(sink)
@@ -861,6 +910,7 @@ where
             "NARROW in {} set {:?}: E {} U {} {} -> {}",
             op, sink, estimated_interval, tightened, old_interval, tightened
         );
+        let  hasChanged = old_interval != tightened;
 
         hasChanged
     }
@@ -896,7 +946,7 @@ where
         let mut iteration = 0;
         while let Some(place) = worklist.pop() {
             iteration += 1;
-            if (iteration > 10) {
+            if (iteration > 1000) {
                 print!("Iteration limit reached, breaking out of pos_update\n");
                 break;
             }
@@ -913,6 +963,7 @@ where
                 }
             }
         }
+        print!("pos_update finished after {} iterations\n", iteration);
     }
     fn generate_active_vars(
         &mut self,
@@ -975,8 +1026,6 @@ where
         }
     }
     pub fn find_intervals(&mut self) {
-        self.build_symbolic_intersect_map();
-
         // let scc_list = Nuutila::new(&self.vars, &self.usemap, &self.symbmap,false,&self.oprs);
         // self.print_vars();
         self.numSCCs = self.worklist.len();
@@ -1023,12 +1072,12 @@ where
                 self.pre_update(&comp_use_map, &entry_points);
                 self.fix_intersects(&component);
 
-                for &variable in &component {
-                    let varnode = self.vars.get_mut(variable).unwrap();
-                    if varnode.get_range().is_unknown() {
-                        varnode.set_default();
-                    }
-                }
+                // for &variable in &component {
+                //     let varnode = self.vars.get_mut(variable).unwrap();
+                //     if varnode.get_range().is_unknown() {
+                //         varnode.set_default();
+                //     }
+                // }
 
                 let mut active_vars = HashSet::new();
                 self.generate_active_vars(&component, &mut active_vars);
@@ -1037,9 +1086,62 @@ where
             self.propagate_to_next_scc(&component);
         }
     }
+    pub fn add_control_dependence_edges(&mut self) {
+        print!("====Add control dependence edges====\n");
+        self.print_symbmap();
+        for (&place, opset) in self.symbmap.iter() {
+            for &op in opset.iter() {
+                let bop_index = self.oprs.len();
+                let opkind = &self.oprs[op];
+                let control_edge = ControlDep::new(
+                    IntervalType::Basic(BasicInterval::default()),
+                    opkind.get_sink(),
+                    opkind.get_instruction(),
+                    place,
+                );
+                print!(
+                    "add control_edge {:?} {:?}\n",
+                    control_edge,
+                    opkind.get_source()
+                );
+                self.oprs.push(BasicOpKind::ControlDep(control_edge));
+                self.usemap.entry(place).or_default().insert(bop_index);
+            }
+        }
+    }
+    pub fn del_control_dependence_edges(&mut self) {
+        print!("====Delete control dependence edges====\n");
+
+        // 从后往前找到第一个不是 ControlDep 的位置
+        let mut remove_from = self.oprs.len();
+        while remove_from > 0 {
+            match &self.oprs[remove_from - 1] {
+                BasicOpKind::ControlDep(dep) => {
+                    let place = dep.source;
+                    print!(
+                        "removing control_edge at idx {}: {:?}\n",
+                        remove_from - 1,
+                        dep
+                    );
+                    if let Some(set) = self.usemap.get_mut(&place) {
+                        set.remove(&(remove_from - 1));
+                        if set.is_empty() {
+                            self.usemap.remove(&place);
+                        }
+                    }
+                    remove_from -= 1;
+                }
+                _ => break,
+            }
+        }
+
+        self.oprs.truncate(remove_from);
+    }
 
     pub fn build_nuutila(&mut self, single: bool) {
         print!("====Building graph====\n");
+        self.print_usemap();
+        self.build_symbolic_intersect_map();
 
         if single {
         } else {
@@ -1047,19 +1149,19 @@ where
                 self.dfs.insert(place, -1);
             }
 
-            // n.add_control_dependence_edges(, use_map, varNodes);
+            self.add_control_dependence_edges();
 
             let places: Vec<_> = self.vars.keys().copied().collect();
-
+            print!("places{:?}\n", places);
             for place in places {
                 if self.dfs[&place] < 0 {
+                    print!("start place{:?}\n", place);
                     let mut stack = Vec::new();
                     self.visit(place, &mut stack);
-                    print!("place{:?}\n", place);
                 }
             }
 
-            // n.del_control_dependence_edges(use_map);
+            self.del_control_dependence_edges();
         }
         print!("components{:?}\n", self.components);
         print!("worklist{:?}\n", self.worklist);

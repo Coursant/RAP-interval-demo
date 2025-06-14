@@ -53,32 +53,50 @@ impl<T> fmt::Display for Range<T>
 where
     T: IntervalArithmetic,
 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let lower = if self.range.left.0 == T::min_value() {
-            &*STR_MIN
-        } else if self.range.left.0 == T::max_value() {
-            &*STR_MAX
-        } else {
-            return write!(
-                f,
-                "{} [{}, {}]",
-                self.rtype, self.range.left.0, self.range.right.0
-            );
-        };
+fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let lower: &Lazy<String> = if self.range.left.0 == T::min_value() {
+        &STR_MIN
+    } else if self.range.left.0 == T::max_value() {
+        &STR_MAX
+    } else {
+        static DUMMY: Lazy<String> = Lazy::new(|| String::new()); 
+        let tmp = format!("{}", self.range.left.0);
+        let tmp_clone = tmp.clone();
+        let local = Lazy::new(|| tmp); 
+        return write!(
+            f,
+            "{} [{}, {}]",
+            self.rtype,
+            *local,
+            if self.range.right.0 == T::min_value() {
+                &*STR_MIN
+            } else if self.range.right.0 == T::max_value() {
+                &*STR_MAX
+            } else {
+                return write!(
+                    f,
+                    "{} [{}, {}]",
+                    self.rtype,
+                    tmp_clone,
+                    self.range.right.0
+                );
+            }
+        );
+    };
 
-        let upper = if self.range.right.0 == T::min_value() {
-            &*STR_MIN
-        } else if self.range.right.0 == T::max_value() {
-            &*STR_MAX
-        } else {
-            return write!(
-                f,
-                "{} [{}, {}]",
-                self.rtype, self.range.left.0, self.range.right.0
-            );
-        };
-        write!(f, "{} [{}, {}]", self.rtype, lower, upper)
-    }
+    let upper: &Lazy<String> = if self.range.right.0 == T::min_value() {
+        &STR_MIN
+    } else if self.range.right.0 == T::max_value() {
+        &STR_MAX
+    } else {
+        let tmp = format!("{}", self.range.right.0);
+        let local = Lazy::new(|| tmp);
+        return write!(f, "{} [{}, {}]", self.rtype, &**lower, *local);
+    };
+
+    write!(f, "{} [{}, {}]", self.rtype, &**lower, &**upper)
+}
+
 }
 
 impl<T> Range<T>
